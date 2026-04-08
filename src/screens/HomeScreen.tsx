@@ -44,7 +44,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleViewAll = () => {
-    navigation.navigate(/* 'AllMangas', { mangas: uploadedMangas } */'Home');
+    navigation.navigate('AllMangas', { mangas: uploadedMangas });
   };
 
   return (
