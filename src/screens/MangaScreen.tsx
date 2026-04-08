@@ -1,41 +1,85 @@
-import React from 'react';
-import { View, Text, FlatList, Image, StyleSheet } from 'react-native';
-import * as nativeStack from '@react-navigation/native-stack';
+import React, { useEffect, useState } from 'react';
+import { View, Text, FlatList, Image, StyleSheet, ActivityIndicator, Dimensions } from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { downloadMangaChapter } from '../services/mangaService';
 
-type Props = nativeStack.NativeStackScreenProps<RootStackParamList, 'Manga'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'Manga'>;
+
+const windowWidth = Dimensions.get('window').width;
 
 const MangaScreen: React.FC<Props> = ({ route }) => {
   const { mangaLink } = route.params;
+  const [pages, setPages] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const pages = [
-    'https://placekitten.com/200/300',
-    'https://placekitten.com/300/300',
-    'https://placekitten.com/400/300',
-  ];
+  useEffect(() => {
+    (async () => {
+      try {
+        const localPaths = await downloadMangaChapter(mangaLink);
+        setPages(localPaths);
+      } catch (error) {
+        console.error("Manga yüklenirken hata:", error);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [mangaLink]);
+
+  if (loading) return <ActivityIndicator style={{ flex: 1 }} size="large" color="#000" />;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.linkText}>Manga Link: {mangaLink}</Text>
       <FlatList
         data={pages}
         keyExtractor={(_, index) => index.toString()}
-        renderItem={({ item }) => (
-          <Image
-            source={{ uri: item }}
-            style={styles.image}
-            resizeMode="contain"
-          />
-        )}
+        renderItem={({ item }) => <MangaPage imagePath={item} />}
+        // Performans ayarları
+        removeClippedSubviews={true}
+        initialNumToRender={2}
+        maxToRenderPerBatch={3}
+        windowSize={5}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );
 };
 
+const MangaPage: React.FC<{ imagePath: string }> = ({ imagePath }) => {
+  const [aspectRatio, setAspectRatio] = useState(1);
+
+  useEffect(() => {
+    // Görüntünün orijinal boyutlarını alıp oranını hesaplıyoruz
+    Image.getSize(
+      `file://${imagePath}`,
+      (width, height) => {
+        if (width > 0 && height > 0) {
+          setAspectRatio(width / height);
+        }
+      },
+      (error) => console.error("Boyut alınamadı:", error)
+    );
+  }, [imagePath]);
+
+  return (
+    <Image
+      source={{ uri: `file://${imagePath}` }}
+      style={{
+        width: windowWidth,
+        // Genişlik sabit olduğu için yüksekliği orana göre belirliyoruz
+        height: windowWidth / aspectRatio, 
+        backgroundColor: '#f0f0f0' // Yüklenirken gri alan görünür
+      }}
+      resizeMode="cover" // Kenar boşluğu kalmaması için
+    />
+  );
+};
+
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 10 },
-  linkText: { marginBottom: 10 },
-  image: { width: '100%', height: 300, marginBottom: 10 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#fff' 
+  }
 });
 
 export default MangaScreen;
