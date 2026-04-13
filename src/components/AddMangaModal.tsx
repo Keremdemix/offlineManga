@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#222',
   },
   selected: {
-    backgroundColor: '#333',
+    backgroundColor: '#9e9e9eff',
   },
   selectedLabel: {
     marginTop: 10,

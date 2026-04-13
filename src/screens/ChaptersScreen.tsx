@@ -1,21 +1,13 @@
 // screens/ChaptersScreen.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
+  View, Text, FlatList, TouchableOpacity, StyleSheet,
+  ActivityIndicator, Alert, ImageBackground, Image, Dimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import {
-  downloadChapter,
-  DownloadProgress,
-} from '../actions/downloadActions';
+import { downloadChapter, DownloadProgress } from '../actions/downloadActions';
 import { extractChapterNumber } from '../utils/chapterUtils';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chapters'>;
@@ -23,287 +15,195 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Chapters'>;
 interface Chapter {
   id: string;
   link: string;
-  label?: string;
-  chapterNumber?: number;
   date: string;
   pages?: string[];
   downloaded?: boolean;
   downloading?: boolean;
+  chapterNumber?: number;
 }
+
+const AMBER  = '#F5A623';
+const BG     = '#0C0C0E';
+const CARD   = '#141416';
+const BORDER = '#1F1F24';
+const W      = Dimensions.get('window').width;
 
 const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const { mangaTitle } = route.params;
-
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [progresses, setProgresses] = useState<
-    Record<string, DownloadProgress>
-  >({});
-
+  const [chapters,    setChapters]   = useState<Chapter[]>([]);
+  const [coverUrl,    setCoverUrl]   = useState<string | null>(null);
+  const [loading,     setLoading]    = useState(true);
+  const [progresses,  setProgresses] = useState<Record<string, DownloadProgress>>({});
   const activeDownloads = useRef<Set<string>>(new Set());
 
-  // =========================
-  // LOAD + FIX CHAPTERS
-  // =========================
   const loadChapters = useCallback(async () => {
     try {
       const data = await AsyncStorage.getItem('localMangas');
       if (!data) return;
-
       const parsed = JSON.parse(data);
+      const idx = parsed.findIndex((m: any) => m.title === mangaTitle);
+      if (idx === -1) return;
 
-      const mangaIndex = parsed.findIndex(
-        (m: any) => m.title === mangaTitle
-      );
+      const manga = parsed[idx];
+      setCoverUrl(manga.cover || null);
 
-      if (mangaIndex === -1) return;
-
-      const manga = parsed[mangaIndex];
       let updated = false;
-
-      const fixedChapters: Chapter[] = (manga.chapters || []).map(
-        (c: any) => {
-          const chapter: Chapter = { ...c };
-
-          // 🔥 SAFE chapterNumber fix
-          if (
-            chapter.chapterNumber == null ||
-            isNaN(Number(chapter.chapterNumber))
-          ) {
-            const num = extractChapterNumber(chapter.link);
-            if (num != null && !isNaN(num)) {
-              chapter.chapterNumber = num;
-              updated = true;
-            }
-          }
-
-          return chapter;
+      const fixed: Chapter[] = (manga.chapters || []).map((c: any) => {
+        const ch: Chapter = { ...c };
+        if (ch.chapterNumber == null || isNaN(Number(ch.chapterNumber))) {
+          const n = extractChapterNumber(ch.link);
+          if (n != null) { ch.chapterNumber = n; updated = true; }
         }
-      );
-
-      // 🔥 save back only if needed
-      if (updated) {
-        parsed[mangaIndex].chapters = fixedChapters;
-        await AsyncStorage.setItem(
-          'localMangas',
-          JSON.stringify(parsed)
-        );
-      }
-
-      // 🔥 stable sort (NEW → OLD)
-      const sorted = [...fixedChapters].sort((a, b) => {
-        const aNum = a.chapterNumber ?? -1;
-        const bNum = b.chapterNumber ?? -1;
-
-        if (aNum !== -1 && bNum !== -1) {
-          return bNum - aNum;
-        }
-
-        const aDate = a.date ?? '';
-        const bDate = b.date ?? '';
-
-        return bDate.localeCompare(aDate);
+        return ch;
       });
 
-      setChapters([...sorted]);
-    } catch (e) {
-      console.error('Chapter load error:', e);
-    } finally {
-      setLoading(false);
-    }
+      if (updated) {
+        parsed[idx].chapters = fixed;
+        await AsyncStorage.setItem('localMangas', JSON.stringify(parsed));
+      }
+
+      const sorted = [...fixed].sort((a, b) => {
+        const an = a.chapterNumber ?? -1, bn = b.chapterNumber ?? -1;
+        if (an !== -1 && bn !== -1) return bn - an;
+        return (b.date ?? '').localeCompare(a.date ?? '');
+      });
+      setChapters(sorted);
+    } catch (e) { console.error('Chapter load error:', e); }
+    finally { setLoading(false); }
   }, [mangaTitle]);
 
-  useEffect(() => {
-    loadChapters();
-  }, [loadChapters]);
+  useEffect(() => { loadChapters(); }, [loadChapters]);
 
-  // =========================
-  // DOWNLOAD
-  // =========================
   const handleDownload = async (chapter: Chapter) => {
     if (activeDownloads.current.has(chapter.id)) return;
-
     activeDownloads.current.add(chapter.id);
-
-    await downloadChapter(
-      mangaTitle,
-      chapter.id,
-      chapter.link,
-      (p) => {
-        setProgresses((prev) => ({
-          ...prev,
-          [chapter.id]: p,
-        }));
-
-        if (p.status === 'done' || p.status === 'error') {
-          activeDownloads.current.delete(chapter.id);
-          loadChapters();
-        }
+    await downloadChapter(mangaTitle, chapter.id, chapter.link, (p) => {
+      setProgresses((prev) => ({ ...prev, [chapter.id]: p }));
+      if (p.status === 'done' || p.status === 'error') {
+        activeDownloads.current.delete(chapter.id);
+        loadChapters();
       }
-    );
+    });
   };
 
-  // =========================
-  // OPEN CHAPTER
-  // =========================
-  const openChapter = (chapter: Chapter) => {
-    if (chapter.downloaded && chapter.pages?.length) {
-      navigation.navigate('Manga', {
-        mangaLink: chapter.link,
-        localPages: chapter.pages,
-      });
+  const openChapter = (ch: Chapter) => {
+    if (ch.downloaded && ch.pages?.length) {
+      navigation.navigate('Manga', { mangaLink: ch.link, localPages: ch.pages });
     } else {
-      navigation.navigate('Manga', {
-        mangaLink: chapter.link,
-      });
+      navigation.navigate('Manga', { mangaLink: ch.link });
     }
   };
 
-  // =========================
-  // STATUS UI
-  // =========================
-  const getStatusIcon = (
-    chapter: Chapter,
-    progress?: DownloadProgress
-  ) => {
-    if (progress?.status === 'downloading') {
-      const pct =
-        progress.total > 0
-          ? Math.round((progress.current / progress.total) * 100)
-          : 0;
+  if (loading) return (
+    <View style={s.centered}>
+      <ActivityIndicator size="large" color={AMBER} />
+    </View>
+  );
 
-      return { icon: '↓', color: '#4A90E2', label: `${pct}%` };
-    }
+  const downloadedCount = chapters.filter(c => c.downloaded).length;
 
-    if (progress?.status === 'error') {
-      return { icon: '✕', color: '#e74c3c', label: 'Hata' };
-    }
+  const renderChapter = ({ item, index }: { item: Chapter; index: number }) => {
+    const progress = progresses[item.id];
+    const isDownloading = progress?.status === 'downloading';
+    const pct = isDownloading && progress.total > 0
+      ? Math.round((progress.current / progress.total) * 100) : 0;
 
-    if (chapter.downloaded) {
-      return { icon: '✓', color: '#2ecc71', label: 'İndirildi' };
-    }
+    const label = item.chapterNumber != null
+      ? `Bölüm ${item.chapterNumber}`
+      : `Bölüm ${index + 1}`;
 
-    return { icon: '↓', color: '#aaa', label: 'İndir' };
-  };
-
-  // =========================
-  // UI STATES
-  // =========================
-  if (loading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#4A90E2" />
-      </View>
+      <TouchableOpacity
+        style={[s.chRow, item.downloaded && s.chRowDone]}
+        onPress={() => openChapter(item)}
+        activeOpacity={0.75}
+      >
+        {/* left accent bar */}
+        <View style={[s.accent, item.downloaded && s.accentDone]} />
+
+        <View style={s.chInfo}>
+          <Text style={[s.chLabel, item.downloaded && s.chLabelDone]}>{label}</Text>
+          <Text style={s.chDate}>{item.date?.slice(0, 10)}</Text>
+          {isDownloading && (
+            <View style={s.progressBg}>
+              <View style={[s.progressFill, { width: `${pct}%` }]} />
+            </View>
+          )}
+        </View>
+
+        {/* download button */}
+        <TouchableOpacity
+          style={[s.dlBtn, item.downloaded ? s.dlBtnDone : isDownloading ? s.dlBtnActive : null]}
+          onPress={() => {
+            if (item.downloaded) {
+              Alert.alert('Tekrar indir?', '', [
+                { text: 'İptal', style: 'cancel' },
+                { text: 'İndir', onPress: () => handleDownload(item) },
+              ]);
+            } else handleDownload(item);
+          }}
+          disabled={isDownloading}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          {isDownloading
+            ? <ActivityIndicator size="small" color={AMBER} />
+            : <Text style={[s.dlIcon, { color: item.downloaded ? '#2ecc71' : '#444' }]}>
+                {item.downloaded ? '✓' : '↓'}
+              </Text>
+          }
+        </TouchableOpacity>
+      </TouchableOpacity>
     );
-  }
+  };
 
   return (
-    <View style={styles.container}>
-      {/* HEADER */}
-      <View style={styles.header}>
-        <Text style={styles.title}>{mangaTitle}</Text>
-        <Text style={styles.subtitle}>
-          {chapters.length} bölüm ·{' '}
-          {chapters.filter((c) => c.downloaded).length} indirildi
-        </Text>
-      </View>
-
-      {/* LIST */}
+    <View style={s.root}>
       <FlatList
         data={chapters}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 30 }}
-        renderItem={({ item }) => {
-          const progress = progresses[item.id];
-          const isDownloading =
-            progress?.status === 'downloading';
-          const status = getStatusIcon(item, progress);
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={() => (
+          <>
+            {/* HERO */}
+            <View style={s.hero}>
+              {coverUrl ? (
+                <ImageBackground
+                  source={{ uri: coverUrl }}
+                  style={s.heroBg}
+                  blurRadius={18}
+                >
+                  <View style={s.heroOverlay} />
+                  <Image source={{ uri: coverUrl }} style={s.heroCover} />
+                </ImageBackground>
+              ) : (
+                <View style={[s.heroBg, { backgroundColor: CARD, justifyContent: 'center', alignItems: 'center' }]}>
+                  <Text style={{ fontSize: 52 }}>📖</Text>
+                </View>
+              )}
+            </View>
 
-          return (
-            <View style={styles.chapterRow}>
-              {/* INFO */}
-              <TouchableOpacity
-                style={styles.chapterInfo}
-                onPress={() => openChapter(item)}
-              >
-                <Text style={styles.chapterText}>
-                {item.chapterNumber != null
-                    ? `Bölüm ${item.chapterNumber}`
-                    : `Bilinmeyen (raw: ${JSON.stringify(item.chapterNumber)})`}
-                </Text>
-
-                <Text style={styles.date}>
-                  {item.date?.slice(0, 10)}
-                </Text>
-
-                {isDownloading && progress?.total > 0 && (
-                  <View style={styles.progressBarBg}>
-                    <View
-                      style={[
-                        styles.progressBarFill,
-                        {
-                          width: `${
-                            (progress.current / progress.total) *
-                            100
-                          }%`,
-                        },
-                      ]}
-                    />
+            {/* TITLE BLOCK */}
+            <View style={s.titleBlock}>
+              <Text style={s.mangaTitle}>{mangaTitle}</Text>
+              <View style={s.statsRow}>
+                <View style={s.statPill}>
+                  <Text style={s.statText}>{chapters.length} bölüm</Text>
+                </View>
+                {downloadedCount > 0 && (
+                  <View style={[s.statPill, s.statPillAmber]}>
+                    <Text style={[s.statText, { color: AMBER }]}>
+                      {downloadedCount} indirildi
+                    </Text>
                   </View>
                 )}
-              </TouchableOpacity>
-
-              {/* BUTTON */}
-              <TouchableOpacity
-                style={[
-                  styles.downloadBtn,
-                  item.downloaded && styles.downloadedBtn,
-                  isDownloading && styles.downloadingBtn,
-                ]}
-                onPress={() => {
-                  if (item.downloaded) {
-                    Alert.alert('Tekrar indir?', '', [
-                      { text: 'İptal', style: 'cancel' },
-                      {
-                        text: 'İndir',
-                        onPress: () => handleDownload(item),
-                      },
-                    ]);
-                  } else {
-                    handleDownload(item);
-                  }
-                }}
-                disabled={isDownloading}
-              >
-                {isDownloading ? (
-                  <ActivityIndicator
-                    size="small"
-                    color="#4A90E2"
-                  />
-                ) : (
-                  <>
-                    <Text
-                      style={[
-                        styles.downloadIcon,
-                        { color: status.color },
-                      ]}
-                    >
-                      {status.icon}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.downloadLabel,
-                        { color: status.color },
-                      ]}
-                    >
-                      {status.label}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              </View>
             </View>
-          );
-        }}
+
+            <Text style={s.listHeader}>BÖLÜMLER</Text>
+          </>
+        )}
+        renderItem={renderChapter}
       />
     </View>
   );
@@ -311,89 +211,47 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
 
 export default ChaptersScreen;
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f0f',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0f0f0f',
-  },
-  header: {
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e1e1e',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 0.3,
-  },
-  subtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#666',
-  },
-  chapterRow: {
+const s = StyleSheet.create({
+  root:    { flex: 1, backgroundColor: BG },
+  centered:{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: BG },
+
+  // Hero
+  hero:        { height: 260, overflow: 'hidden' },
+  heroBg:      { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' },
+  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(12,12,14,0.55)' },
+  heroCover:   { width: 120, height: 172, borderRadius: 12, borderWidth: 2, borderColor: 'rgba(255,255,255,0.12)' },
+
+  // Title block
+  titleBlock: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 18 },
+  mangaTitle: { fontSize: 22, fontWeight: '900', color: '#fff', letterSpacing: 0.3, marginBottom: 10 },
+  statsRow:   { flexDirection: 'row', gap: 8 },
+  statPill:      { backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  statPillAmber: { borderColor: AMBER + '44' },
+  statText:      { fontSize: 11, fontWeight: '700', color: '#555' },
+
+  listHeader: { fontSize: 10, fontWeight: '900', color: '#2A2A30', letterSpacing: 3, paddingHorizontal: 20, marginBottom: 4 },
+
+  // Chapter row
+  chRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
+    paddingVertical: 16,
+    paddingRight: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
+    borderBottomColor: BORDER,
   },
-  chapterInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  chapterText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#e8e8e8',
-  },
-  date: {
-    fontSize: 11,
-    color: '#555',
-    marginTop: 3,
-  },
-  progressBarBg: {
-    marginTop: 6,
-    height: 3,
-    backgroundColor: '#222',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: 3,
-    backgroundColor: '#4A90E2',
-    borderRadius: 2,
-  },
-  downloadBtn: {
-    width: 60,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#1a1a1a',
-  },
-  downloadedBtn: {
-    backgroundColor: '#0d2b1a',
-  },
-  downloadingBtn: {
-    backgroundColor: '#0d1f2b',
-  },
-  downloadIcon: {
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  downloadLabel: {
-    fontSize: 10,
-    marginTop: 2,
-    fontWeight: '600',
-  },
+  chRowDone: { backgroundColor: '#0F1410' },
+  accent:     { width: 3, height: '100%', backgroundColor: 'transparent', marginRight: 16, marginLeft: 20, borderRadius: 2 },
+  accentDone: { backgroundColor: '#2ecc71' },
+  chInfo:   { flex: 1 },
+  chLabel:  { fontSize: 14, fontWeight: '700', color: '#D0D0D8' },
+  chLabelDone: { color: '#4A8060' },
+  chDate:   { fontSize: 11, color: '#2A2A30', marginTop: 3 },
+  progressBg:  { marginTop: 6, height: 2, backgroundColor: '#222', borderRadius: 1, overflow: 'hidden' },
+  progressFill:{ height: 2, backgroundColor: AMBER, borderRadius: 1 },
+
+  dlBtn:       { width: 36, height: 36, borderRadius: 10, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, justifyContent: 'center', alignItems: 'center' },
+  dlBtnDone:   { backgroundColor: '#0A1F12', borderColor: '#1A3A24' },
+  dlBtnActive: { borderColor: AMBER + '66' },
+  dlIcon:      { fontSize: 15, fontWeight: '800' },
 });
