@@ -73,14 +73,13 @@ const handleSave = async () => {
   const data = await AsyncStorage.getItem('localMangas');
   let storedMangas: Manga[] = data ? JSON.parse(data) : [];
 
-  // 🔥 chapter numarasını çıkar
   const chapterNum = extractChapterNumber(chapterLink.trim());
 
   const newChapter = {
     id: Date.now().toString(),
     link: chapterLink.trim(),
-    label: `Bölüm ${chapterNum || 'Yeni'}`,
-    chapterNumber: chapterNum || undefined,
+    label: `Bölüm ${chapterNum ?? 'Yeni'}`,
+    chapterNumber: chapterNum ?? undefined,
     date: new Date().toISOString(),
     pages: [],
     downloading: true,
@@ -90,11 +89,14 @@ const handleSave = async () => {
   const existing = storedMangas.find((m) => m.title === resolvedTitle);
 
   if (existing) {
-    // 🔥 duplicate kontrol (fixli)
     const exists = existing.chapters.some((c) => {
-      if (newChapter.chapterNumber && c.chapterNumber) {
-        return c.chapterNumber === newChapter.chapterNumber;
+      const a = Number(newChapter.chapterNumber);
+      const b = Number(c.chapterNumber);
+
+      if (!isNaN(a) && !isNaN(b)) {
+        return a === b;
       }
+
       return c.link === newChapter.link;
     });
 
@@ -103,20 +105,17 @@ const handleSave = async () => {
       return;
     }
 
-    // 🔥 ekle
     existing.chapters.push(newChapter);
 
-    // 🔥 sırala (küçük → büyük)
     existing.chapters.sort((a, b) => {
-      if (a.chapterNumber && b.chapterNumber) {
+      if (a.chapterNumber != null && b.chapterNumber != null) {
         return a.chapterNumber - b.chapterNumber;
       }
-      return a.date.localeCompare(b.date);
+
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
     });
 
   } else {
-    // 🔥 yeni manga
-
     storedMangas.push({
       title: resolvedTitle,
       cover: cover.trim() || undefined,
@@ -126,11 +125,21 @@ const handleSave = async () => {
 
   await AsyncStorage.setItem('localMangas', JSON.stringify(storedMangas));
 
+  // 🔥 CRITICAL: UI update
+  setMangas([...storedMangas]);
+
   reset();
   onSave();
 
-  // 🔥 background download
-  downloadChapter(resolvedTitle, newChapter.id, newChapter.link);
+  // 🔥 debug destekli download
+  downloadChapter(
+    resolvedTitle,
+    newChapter.id,
+    newChapter.link,
+    (p) => {
+      console.log('DOWNLOAD:', p);
+    }
+  );
 };
 
   return (

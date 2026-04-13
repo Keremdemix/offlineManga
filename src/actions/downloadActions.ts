@@ -1,6 +1,7 @@
 // actions/downloadActions.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { downloadMangaChapter } from '../services/mangaService';
+import { Manga } from '../types/manga';
 
 export type DownloadStatus = 'idle' | 'downloading' | 'done' | 'error';
 
@@ -20,38 +21,49 @@ export const downloadChapter = async (
   onProgress?: (p: DownloadProgress) => void
 ): Promise<boolean> => {
   try {
-    onProgress?.({ chapterId, status: 'downloading', current: 0, total: 0 });
-
-    const result = await downloadMangaChapter(link, (current, total) => {
-      onProgress?.({ chapterId, status: 'downloading', current, total });
+    onProgress?.({
+      chapterId,
+      status: 'downloading',
+      current: 0,
+      total: 0,
     });
 
-    if (result.error || result.pages.length === 0) {
+    const result = await downloadMangaChapter(link, (current, total) => {
+      onProgress?.({
+        chapterId,
+        status: 'downloading',
+        current,
+        total,
+      });
+    });
+
+    if (!result || result.error || !result.pages?.length) {
       onProgress?.({
         chapterId,
         status: 'error',
         current: 0,
         total: 0,
-        error: result.error,
+        error: result?.error || 'No pages found',
       });
       return false;
     }
 
-    // AsyncStorage güncelle
     const data = await AsyncStorage.getItem('localMangas');
-    let mangas = JSON.parse(data || '[]');
+    let mangas: Manga[] = data ? JSON.parse(data) : [];
 
-    mangas = mangas.map((m: any) => {
-      if (m.title !== mangaTitle) return m;
-      return {
+    mangas = mangas.map((m: Manga) => ({
         ...m,
-        chapters: m.chapters.map((c: any) =>
-          c.id === chapterId
-            ? { ...c, pages: result.pages, downloading: false, downloaded: true }
+        chapters: m.chapters.map((c) =>
+            c.id === chapterId
+            ? {
+                ...c,
+                pages: result.pages,
+                downloading: false,
+                downloaded: true,
+                }
             : c
         ),
-      };
-    });
+    }));
 
     await AsyncStorage.setItem('localMangas', JSON.stringify(mangas));
 
@@ -64,21 +76,16 @@ export const downloadChapter = async (
 
     return true;
   } catch (e) {
-    console.error('DOWNLOAD ERROR', e);
-    onProgress?.({ chapterId, status: 'error', current: 0, total: 0, error: String(e) });
-    return false;
-  }
-};
+    console.error('DOWNLOAD ERROR:', e);
 
-// Manganın tüm bölümlerini sırayla indir
-export const downloadAllChapters = async (
-  mangaTitle: string,
-  chapters: Array<{ id: string; link: string }>,
-  onProgress?: (chapterId: string, p: DownloadProgress) => void
-): Promise<void> => {
-  for (const chapter of chapters) {
-    await downloadChapter(mangaTitle, chapter.id, chapter.link, (p) =>
-      onProgress?.(chapter.id, p)
-    );
+    onProgress?.({
+      chapterId,
+      status: 'error',
+      current: 0,
+      total: 0,
+      error: String(e),
+    });
+
+    return false;
   }
 };
