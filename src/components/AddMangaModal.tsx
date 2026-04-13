@@ -1,4 +1,3 @@
-// components/AddMangaModal.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -8,40 +7,33 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
-  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { downloadChapter } from '../actions/downloadActions';
-import { extractChapterNumber} from '../utils/chapterUtils';
+import { extractChapterNumber } from '../utils/chapterUtils';
 
 interface Manga {
   title: string;
-  cover?: string;
-  chapters: { 
-  id: string; 
-  link: string; 
-  label: string;
-  chapterNumber?: number;
-  date: string; 
-  pages: string[]; 
-  downloading: boolean; 
-  downloaded: boolean 
-}[];
 }
 
 interface Props {
   visible: boolean;
+  mode: 'manga' | 'chapter';   // 🔥 DIŞARIDAN GELİYOR
   onSave: () => void;
   onCancel: () => void;
 }
 
-const AddMangaModal: React.FC<Props> = ({ visible, onSave, onCancel }) => {
-  const [mangas, setMangas]               = useState<Manga[]>([]);
+const AddMangaModal: React.FC<Props> = ({
+  visible,
+  mode,
+  onSave,
+  onCancel,
+}) => {
+  const [mangas, setMangas] = useState<Manga[]>([]);
+  const [search, setSearch] = useState('');
   const [selectedManga, setSelectedManga] = useState('');
-  const [newTitle, setNewTitle]           = useState('');
-  const [cover, setCover]                 = useState('');
-  const [chapterLink, setChapterLink]     = useState('');
-  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [cover, setCover] = useState('');
+  const [chapterLink, setChapterLink] = useState('');
 
   useEffect(() => {
     if (!visible) return;
@@ -55,169 +47,174 @@ const AddMangaModal: React.FC<Props> = ({ visible, onSave, onCancel }) => {
     setNewTitle('');
     setCover('');
     setChapterLink('');
-    setIsCreatingNew(false);
   };
 
-  const handleCancel = () => {
+  const handleClose = () => {
     reset();
     onCancel();
   };
 
-const handleSave = async () => {
-  const resolvedTitle = isCreatingNew
-    ? newTitle.trim()
-    : selectedManga.trim();
+  // ---------------- SAVE MANGA ----------------
+  const handleSaveManga = async () => {
+    if (!newTitle.trim()) return;
 
-  if (!resolvedTitle || !chapterLink.trim()) return;
+    const data = await AsyncStorage.getItem('localMangas');
+    let stored = data ? JSON.parse(data) : [];
 
-  const data = await AsyncStorage.getItem('localMangas');
-  let storedMangas: Manga[] = data ? JSON.parse(data) : [];
+    stored.push({
+      title: newTitle.trim(),
+      cover: cover.trim() || undefined,
+      chapters: [],
+    });
 
-  const chapterNum = extractChapterNumber(chapterLink.trim());
+    await AsyncStorage.setItem('localMangas', JSON.stringify(stored));
 
-  const newChapter = {
-    id: Date.now().toString(),
-    link: chapterLink.trim(),
-    label: `Bölüm ${chapterNum ?? 'Yeni'}`,
-    chapterNumber: chapterNum ?? undefined,
-    date: new Date().toISOString(),
-    pages: [],
-    downloading: true,
-    downloaded: false,
+    reset();
+    onSave();
   };
 
-  const existing = storedMangas.find((m) => m.title === resolvedTitle);
+  // ---------------- SAVE CHAPTER ----------------
+  const handleSaveChapter = async () => {
+    if (!selectedManga || !chapterLink.trim()) return;
 
-  if (existing) {
-    const exists = existing.chapters.some((c) => {
-      const a = Number(newChapter.chapterNumber);
-      const b = Number(c.chapterNumber);
+    const data = await AsyncStorage.getItem('localMangas');
+    let stored = data ? JSON.parse(data) : [];
 
-      if (!isNaN(a) && !isNaN(b)) {
-        return a === b;
-      }
+    const chapterNum = extractChapterNumber(chapterLink);
 
-      return c.link === newChapter.link;
+    const newChapter = {
+      id: Date.now().toString(),
+      link: chapterLink.trim(),
+      chapterNumber: chapterNum ?? null,
+      label: chapterNum ? `Bölüm ${chapterNum}` : 'Bilinmeyen',
+      date: new Date().toISOString(),
+      pages: [],
+      downloaded: false,
+      downloading: true,
+    };
+
+    stored = stored.map((m: any) => {
+      if (m.title !== selectedManga) return m;
+
+      return {
+        ...m,
+        chapters: [...m.chapters, newChapter],
+      };
     });
 
-    if (exists) {
-      Alert.alert('Bu bölüm zaten eklenmiş');
-      return;
-    }
+    await AsyncStorage.setItem('localMangas', JSON.stringify(stored));
 
-    existing.chapters.push(newChapter);
+    reset();
+    onSave();
+  };
 
-    existing.chapters.sort((a, b) => {
-      if (a.chapterNumber != null && b.chapterNumber != null) {
-        return a.chapterNumber - b.chapterNumber;
-      }
-
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
-    });
-
-  } else {
-    storedMangas.push({
-      title: resolvedTitle,
-      cover: cover.trim() || undefined,
-      chapters: [newChapter],
-    });
-  }
-
-  await AsyncStorage.setItem('localMangas', JSON.stringify(storedMangas));
-
-  // 🔥 CRITICAL: UI update
-  setMangas([...storedMangas]);
-
-  reset();
-  onSave();
-
-  // 🔥 debug destekli download
-  downloadChapter(
-    resolvedTitle,
-    newChapter.id,
-    newChapter.link,
-    (p) => {
-      console.log('DOWNLOAD:', p);
-    }
-  );
-};
-
+  // ---------------- UI ----------------
   return (
     <Modal visible={visible} transparent animationType="slide">
       <View style={styles.overlay}>
         <View style={styles.modal}>
-          <Text style={styles.heading}>Manga Ekle</Text>
 
-          <FlatList
-            data={[...mangas.map((m) => m.title), '➕ Yeni Manga Oluştur']}
-            keyExtractor={(item) => item}
-            style={styles.list}
-            renderItem={({ item }) => {
-              const isNew      = item === '➕ Yeni Manga Oluştur';
-              const isSelected = !isNew && selectedManga === item;
-              return (
-                <TouchableOpacity
-                  style={[styles.item, isSelected && styles.itemSelected]}
-                  onPress={() => {
-                    if (isNew) {
-                      setIsCreatingNew(true);
-                      setSelectedManga('');
-                    } else {
-                      setIsCreatingNew(false);
-                      setSelectedManga(item);
-                    }
-                  }}
-                >
-                  <Text style={[styles.itemText, isSelected && styles.itemTextSelected]}>
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              );
-            }}
-          />
-
-          {isCreatingNew && (
+          {/* MANGA MODE */}
+          {mode === 'manga' && (
             <>
+              <Text style={styles.title}>Yeni Manga</Text>
+
               <TextInput
                 placeholder="Manga Adı"
-                placeholderTextColor="#aaa"
+                placeholderTextColor="#666"
                 style={styles.input}
                 value={newTitle}
                 onChangeText={setNewTitle}
               />
+
               <TextInput
-                placeholder="Kapak URL (opsiyonel)"
-                placeholderTextColor="#aaa"
+                placeholder="Kapak URL"
+                placeholderTextColor="#666"
                 style={styles.input}
                 value={cover}
                 onChangeText={setCover}
               />
+
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveManga}>
+                <Text style={styles.saveText}>Kaydet</Text>
+              </TouchableOpacity>
             </>
           )}
 
-          {!isCreatingNew && selectedManga !== '' && (
-            <Text style={styles.selectedLabel}>Seçilen: {selectedManga}</Text>
+          {/* CHAPTER MODE */}
+          {mode === 'chapter' && (
+            <>
+              <Text style={styles.title}>Yeni Bölüm</Text>
+
+              {/* 🔍 SEARCH INPUT */}
+              <TextInput
+                placeholder="Manga ara..."
+                placeholderTextColor="#666"
+                style={styles.input}
+                value={search}
+                onChangeText={setSearch}
+              />
+
+              {/* FILTERED LIST */}
+              <View style={styles.dropdown}>
+                <FlatList
+                  data={mangas
+                    .map((m) => m.title)
+                    .filter((t) =>
+                      t.toLowerCase().includes(search.toLowerCase())
+                    )}
+                  keyExtractor={(i) => i}
+                  style={{ maxHeight: 140 }}
+                  keyboardShouldPersistTaps="handled"
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSelectedManga(item);
+                        setSearch(item); // seçileni inputa yaz
+                      }}
+                      style={[
+                        styles.listItem,
+                        selectedManga === item && styles.selected,
+                      ]}
+                    >
+                      <Text style={{ color: '#fff' }}>{item}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+
+              {/* SELECTED INFO */}
+              {selectedManga !== '' && (
+                <Text style={styles.selectedLabel}>
+                  Seçilen: {selectedManga}
+                </Text>
+              )}
+
+              <TextInput
+                placeholder="Chapter Link"
+                placeholderTextColor="#666"
+                style={styles.input}
+                value={chapterLink}
+                onChangeText={setChapterLink}
+              />
+
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleSaveChapter}
+              >
+                <Text style={styles.saveText}>İndir</Text>
+              </TouchableOpacity>
+            </>
           )}
 
-          <TextInput
-            placeholder="Chapter Link"
-            placeholderTextColor="#aaa"
-            style={styles.input}
-            value={chapterLink}
-            onChangeText={setChapterLink}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-          />
+          {/* CLOSE */}
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={handleClose}
+          >
+            <Text style={styles.closeText}>Kapat</Text>
+          </TouchableOpacity>
 
-          <View style={styles.buttons}>
-            <TouchableOpacity onPress={handleCancel}>
-              <Text style={styles.cancelText}>İptal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSave}>
-              <Text style={styles.saveText}>Kaydet</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </View>
     </Modal>
@@ -229,70 +226,86 @@ export default AddMangaModal;
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.8)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modal: {
     width: '90%',
-    backgroundColor: '#fff',
-    borderRadius: 14,
+    backgroundColor: '#121212',
+    borderRadius: 16,
     padding: 20,
   },
-  heading: {
+  title: {
+    color: '#fff',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '800',
     marginBottom: 12,
-    color: '#222',
-  },
-  list: {
-    maxHeight: 160,
-    marginBottom: 4,
-  },
-  item: {
-    padding: 11,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    borderRadius: 6,
-  },
-  itemSelected: {
-    backgroundColor: '#e8f0fb',
-  },
-  itemText: {
-    color: '#333',
-    fontSize: 14,
-  },
-  itemTextSelected: {
-    color: '#4A90E2',
-    fontWeight: '700',
-  },
-  selectedLabel: {
-    marginTop: 8,
-    fontWeight: 'bold',
-    color: '#4A90E2',
-    fontSize: 13,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    backgroundColor: '#1e1e1e',
     padding: 10,
+    borderRadius: 10,
     marginTop: 10,
-    fontSize: 14,
-    color: '#222',
+    color: '#fff',
   },
-  buttons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 18,
+  closeBtn: {
+    backgroundColor: '#e74c3c',
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
   },
-  cancelText: {
-    color: '#888',
-    fontSize: 15,
+
+  closeText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  btn: {
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  blue: { backgroundColor: '#4A90E2' },
+  orange: { backgroundColor: '#ff8c42' },
+  btnText: { color: '#fff', fontWeight: '700' },
+  saveBtn: {
+    backgroundColor: '#4A90E2',
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
   },
   saveText: {
-    color: '#4A90E2',
-    fontWeight: 'bold',
-    fontSize: 15,
+    color: '#fff',
+    fontWeight: '700',
   },
+  listItem: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  selected: {
+    backgroundColor: '#333',
+  },
+  selectedLabel: {
+    marginTop: 10,
+    color: '#4A90E2',
+    fontSize: 12,
+    fontWeight: '800',
+    backgroundColor: '#0d1f2b',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  dropdown: {
+  backgroundColor: '#1a1a1a',
+  borderRadius: 10,
+  marginTop: 8,
+  borderWidth: 1,
+  borderColor: '#2a2a2a',
+  overflow: 'hidden',
+},
 });

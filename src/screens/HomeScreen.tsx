@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
-  ScrollView,
   Image,
   StatusBar,
 } from 'react-native';
@@ -29,6 +28,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const [uploadedMangas, setUploadedMangas] = useState<Manga[]>([]);
   const [recentMangas, setRecentMangas] = useState<Manga[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
+  const [modalMode, setModalMode] = useState<'manga' | 'chapter'>('manga');
 
   const loadMangas = useCallback(async () => {
     try {
@@ -39,9 +39,12 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         const mapped: Manga[] = parsed.map((m: any) => ({
           title: m.title,
           cover: m.cover || null,
-          lastOpened: m.lastOpened || m.chapters?.[m.chapters.length - 1]?.date?.slice(0, 10),
+          lastOpened:
+            m.lastOpened ||
+            m.chapters?.[m.chapters.length - 1]?.date?.slice(0, 10),
           totalChapters: m.chapters?.length || 0,
-          downloadedChapters: m.chapters?.filter((c: any) => c.downloaded).length || 0,
+          downloadedChapters:
+            m.chapters?.filter((c: any) => c.downloaded).length || 0,
         }));
 
         setUploadedMangas(mapped);
@@ -76,39 +79,58 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('AllMangas', { mangas: uploadedMangas });
   };
 
+  const topMangas = uploadedMangas.slice(0, 3);
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#0a0a0a" />
-      <ScrollView
-        style={styles.container}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
-        {/* Başlık */}
-        <View style={styles.topBar}>
-          <Text style={styles.appName}>📚 MangaBox</Text>
-          <Text style={styles.appSub}>{uploadedMangas.length} manga</Text>
-        </View>
 
-        {/* Ekle butonu */}
-        <TouchableOpacity style={styles.addCard} onPress={() => setModalVisible(true)}>
-          <Text style={styles.addIcon}>＋</Text>
-          <Text style={styles.addText}>Yeni Manga Ekle</Text>
+      {/* HEADER */}
+      <View style={styles.topBar}>
+        <Text style={styles.appName}>📚 MangaBox</Text>
+        <Text style={styles.appSub}>{uploadedMangas.length} manga</Text>
+      </View>
+
+      {/* ACTION BUTTONS */}
+      <View style={styles.buttonRow}>
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: '#4A90E2' }]}
+          onPress={() => {
+            setModalMode('manga');
+            setModalVisible(true);
+          }}
+        >
+          <Text style={styles.actionText}>➕ Manga Ekle</Text>
         </TouchableOpacity>
 
-        {/* Son kullanılanlar */}
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: '#ff8c42' }]}
+          onPress={() => {
+            setModalMode('chapter');
+            setModalVisible(true);
+          }}
+        >
+          <Text style={styles.actionText}>📥 Bölüm Ekle</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* CONTENT */}
+      <View style={styles.content}>
+
+        {/* SON KULLANILANLAR */}
         {recentMangas.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>Son Kullanılanlar</Text>
+
             <FlatList
               horizontal
               data={recentMangas}
               keyExtractor={(item) => item.title}
+              showsHorizontalScrollIndicator={false}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.recentCard}
                   onPress={() => handleOpenManga(item)}
-                  activeOpacity={0.75}
                 >
                   {item.cover ? (
                     <Image source={{ uri: item.cover }} style={styles.recentCover} />
@@ -117,112 +139,63 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                       <Text style={styles.placeholderEmoji}>📖</Text>
                     </View>
                   )}
-                  {/* İndirme rozeti */}
-                  {(item.downloadedChapters ?? 0) > 0 && (
-                    <View style={styles.downloadBadge}>
-                      <Text style={styles.downloadBadgeText}>
-                        {item.downloadedChapters}
-                      </Text>
-                    </View>
-                  )}
+
                   <Text style={styles.recentTitle} numberOfLines={2}>
                     {item.title}
                   </Text>
                 </TouchableOpacity>
               )}
-              showsHorizontalScrollIndicator={false}
             />
           </>
         )}
 
-        {/* Tüm mangalar başlık */}
+        {/* BAŞLIK + VIEW ALL */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Yüklenen Mangalar</Text>
-          {uploadedMangas.length > 5 && (
-            <TouchableOpacity onPress={handleViewAll}>
-              <Text style={styles.viewAllText}>Tümünü Gör →</Text>
-            </TouchableOpacity>
-          )}
+
+          <TouchableOpacity onPress={handleViewAll}>
+            <Text style={styles.viewAllText}>Tümünü Gör →</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Liste */}
-        {uploadedMangas.length === 0 ? (
+        {/* SADECE 3 MANGA */}
+        {topMangas.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>🗂️</Text>
             <Text style={styles.emptyText}>Henüz manga eklenmedi</Text>
-            <Text style={styles.emptyHint}>
-              Yukarıdaki butona tıklayarak ekle
-            </Text>
           </View>
         ) : (
-          <FlatList
-            data={uploadedMangas.slice(0, 5)}
-            keyExtractor={(item) => item.title}
-            renderItem={({ item }) => {
-              const allDownloaded =
-                (item.totalChapters ?? 0) > 0 &&
-                item.downloadedChapters === item.totalChapters;
-              const partialDownload =
-                (item.downloadedChapters ?? 0) > 0 && !allDownloaded;
+          topMangas.map((item) => (
+            <TouchableOpacity
+              key={item.title}
+              style={styles.mangaCard}
+              onPress={() => handleOpenManga(item)}
+            >
+              {item.cover ? (
+                <Image source={{ uri: item.cover }} style={styles.cardCover} />
+              ) : (
+                <View style={styles.cardCoverPlaceholder}>
+                  <Text style={{ fontSize: 28 }}>📖</Text>
+                </View>
+              )}
 
-              return (
-                <TouchableOpacity
-                  style={styles.mangaCard}
-                  onPress={() => handleOpenManga(item)}
-                  activeOpacity={0.8}
-                >
-                  {/* Kapak */}
-                  {item.cover ? (
-                    <Image source={{ uri: item.cover }} style={styles.cardCover} />
-                  ) : (
-                    <View style={[styles.cardCover, styles.cardCoverPlaceholder]}>
-                      <Text style={{ fontSize: 28 }}>📖</Text>
-                    </View>
-                  )}
+              <View style={styles.cardText}>
+                <Text style={styles.mangaTitle}>{item.title}</Text>
 
-                  {/* Metin */}
-                  <View style={styles.cardText}>
-                    <Text style={styles.mangaTitle} numberOfLines={2}>
-                      {item.title}
-                    </Text>
+                <Text style={styles.metaText}>
+                  {item.totalChapters} bölüm
+                </Text>
+              </View>
 
-                    {/* Bölüm / indirme durumu */}
-                    <View style={styles.metaRow}>
-                      <Text style={styles.metaText}>
-                        {item.totalChapters} bölüm
-                      </Text>
-                      {allDownloaded && (
-                        <View style={[styles.statusPill, styles.pillGreen]}>
-                          <Text style={styles.pillText}>✓ Tamamı indirildi</Text>
-                        </View>
-                      )}
-                      {partialDownload && (
-                        <View style={[styles.statusPill, styles.pillBlue]}>
-                          <Text style={styles.pillText}>
-                            {item.downloadedChapters}/{item.totalChapters} indirildi
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {item.lastOpened && (
-                      <Text style={styles.lastOpened}>
-                        {item.lastOpened}
-                      </Text>
-                    )}
-                  </View>
-
-                  <Text style={styles.chevron}>›</Text>
-                </TouchableOpacity>
-              );
-            }}
-            scrollEnabled={false}
-          />
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+          ))
         )}
-      </ScrollView>
+      </View>
 
       <AddMangaModal
         visible={modalVisible}
+        mode={modalMode}   // 🔥 BURASI ÖNEMLİ
         onSave={handleSaveManga}
         onCancel={() => setModalVisible(false)}
       />
@@ -231,16 +204,17 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 };
 
 export default HomeScreen;
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#0a0a0a',
   },
+
   container: {
     flex: 1,
     paddingHorizontal: 16,
   },
+
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -248,85 +222,104 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
   },
+
   appName: {
     fontSize: 22,
     fontWeight: '900',
     color: '#fff',
     letterSpacing: 0.5,
   },
+
   appSub: {
     fontSize: 13,
-    color: '#555',
+    color: '#666',
   },
-  addCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#4A90E2',
-    borderRadius: 14,
-    paddingVertical: 16,
-    marginBottom: 24,
-    gap: 8,
-  },
-  addIcon: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  addText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
+
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#ccc',
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#d0d0d0',
     marginBottom: 12,
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
+
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 22,
     marginBottom: 12,
   },
+
   viewAllText: {
     color: '#4A90E2',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  // Recent
+
+  content: {
+    flex: 1,
+  },
+
+  // ================= BUTTONS =================
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 18,
+  },
+
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 15,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+
+  actionText: {
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 13,
+  },
+
+  // ================= RECENT =================
   recentCard: {
-    marginRight: 12,
-    width: 100,
-    position: 'relative',
+    marginRight: 14,
+    width: 120,
   },
+
   recentCover: {
-    width: 100,
-    height: 148,
-    borderRadius: 10,
+    width: 120,
+    height: 170,
+    borderRadius: 14,
     marginBottom: 6,
   },
+
   recentCoverPlaceholder: {
-    width: 100,
-    height: 148,
-    borderRadius: 10,
+    width: 120,
+    height: 170,
+    borderRadius: 14,
     backgroundColor: '#1a1a1a',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 6,
   },
+
   placeholderEmoji: {
-    fontSize: 32,
+    fontSize: 34,
   },
+
+  recentTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#bbb',
+    lineHeight: 16,
+  },
+
   downloadBadge: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 8,
+    right: 8,
     backgroundColor: '#4A90E2',
     borderRadius: 10,
     minWidth: 20,
@@ -335,99 +328,114 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 4,
   },
+
   downloadBadgeText: {
     color: '#fff',
     fontSize: 10,
     fontWeight: '800',
   },
-  recentTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#bbb',
-    lineHeight: 16,
-  },
-  // Manga card
+
+  // ================= MANGA CARD =================
   mangaCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#141414',
-    padding: 12,
-    marginBottom: 10,
-    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#1e1e1e',
+    borderColor: '#222',
   },
+
   cardCover: {
-    width: 56,
-    height: 80,
-    borderRadius: 8,
+    width: 85,
+    height: 115,
+    borderRadius: 12,
   },
+
   cardCoverPlaceholder: {
+    width: 85,
+    height: 115,
+    borderRadius: 12,
     backgroundColor: '#1e1e1e',
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   cardText: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 14,
   },
+
   mangaTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#e8e8e8',
+    color: '#fff',
+    fontWeight: '900',
+    fontSize: 16,
     marginBottom: 6,
   },
+
+  metaText: {
+    color: '#888',
+    fontSize: 12,
+  },
+
+  lastOpened: {
+    fontSize: 11,
+    color: '#555',
+    marginTop: 5,
+  },
+
+  chevron: {
+    fontSize: 22,
+    color: '#555',
+    marginLeft: 8,
+  },
+
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
   },
-  metaText: {
-    fontSize: 12,
-    color: '#555',
-  },
+
   statusPill: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 10,
   },
+
   pillGreen: {
     backgroundColor: '#0d2b1a',
   },
+
   pillBlue: {
     backgroundColor: '#0d1f2b',
   },
+
   pillText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#4A90E2',
   },
-  lastOpened: {
-    fontSize: 11,
-    color: '#444',
-    marginTop: 5,
-  },
-  chevron: {
-    fontSize: 22,
-    color: '#333',
-    marginLeft: 8,
-  },
-  // Empty
+
+  // ================= EMPTY =================
   emptyState: {
     alignItems: 'center',
     paddingTop: 60,
     paddingBottom: 40,
   },
+
   emptyEmoji: {
     fontSize: 48,
     marginBottom: 12,
   },
+
   emptyText: {
     fontSize: 16,
-    color: '#555',
+    color: '#666',
     fontWeight: '700',
   },
+
   emptyHint: {
     fontSize: 13,
     color: '#333',
