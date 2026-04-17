@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+/* import AsyncStorage from '@react-native-async-storage/async-storage';
 import { downloadMangaChapter } from '../services/mangaService';
 
 interface Chapter {
@@ -57,4 +57,4 @@ export const downloadChapter = async (
   } catch (e) {
     console.error('DOWNLOAD ERROR', e);
   }
-};
+}; */
