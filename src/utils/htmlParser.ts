@@ -1,28 +1,70 @@
-// utils/htmlParser.ts
 export function parseMangaImages(html: string): string[] {
-  // Tüm <img> taglerini bul, class wp-manga-chapter-img olanları filtrele
-  const imgRegex = /<img[^>]+class="wp-manga-chapter-img"[^>]*>/g;
   const urls: string[] = [];
+
+  // 1️⃣ Direkt tüm HTML içinde img taglerini yakala
+  const imgRegex = /<img[^>]+>/gi;
 
   let match: RegExpExecArray | null;
 
-  while ((match = imgRegex.exec(html)) !== null) {
-    const imgTag = match[0];
+ while ((match = imgRegex.exec(html)) !== null) {
+  const imgTag = match[0];
 
-    // Öncelikle src attribute
-    let url = /src="([^"]+)"/.exec(imgTag)?.[1]?.trim();
+  const url =
+    /data-src="([^"]+)"/i.exec(imgTag)?.[1] ||
+    /data-lazy-src="([^"]+)"/i.exec(imgTag)?.[1] ||
+    /data-original="([^"]+)"/i.exec(imgTag)?.[1] ||
+    /src="([^"]+)"/i.exec(imgTag)?.[1];
 
-    // Eğer src yoksa lazy load için data-src attribute
-    if (!url || !url.startsWith('http')) {
-      url = /data-src="([^"]+)"/.exec(imgTag)?.[1]?.trim();
-    }
+  if (!url) continue;
 
-    // Son güvenlik kontrolü
-    if (url && url.startsWith('http')) {
-      urls.push(url);
-    }
+  const cleanUrl = url.trim();
+
+  // ❌ thumbnail / small image detection
+const isThumbnail =
+  /-\d{2,4}x\d{2,4}(-\d+)?\./.test(cleanUrl)
+    cleanUrl.includes("thumb") ||
+    cleanUrl.includes("thumbnail");
+
+  // ❌ unwanted assets
+  const isUnwanted =
+    cleanUrl.includes("logo") ||
+    cleanUrl.includes("icon") ||
+    cleanUrl.includes("avatar") ||
+    cleanUrl.includes("banner") ||
+    cleanUrl.includes("cover") ||
+    cleanUrl.includes("covers") ||
+    cleanUrl.includes("profile") ||
+    cleanUrl.includes("author") ||
+    cleanUrl.includes("user-") ||
+    cleanUrl.includes("default");
+
+  // ❌ extension check (sadece image kalsın)
+  const isValidImage = /\.(png|jpg|jpeg|webp)$/i.test(cleanUrl);
+
+  if (!cleanUrl.startsWith("http") || !isValidImage || isThumbnail || isUnwanted) {
+    continue;
   }
 
-  console.log('FOUND IMAGES:', urls.length);
-  return urls;
+  urls.push(cleanUrl);
+}
+
+  // 4️⃣ Duplicate temizle
+  const uniqueUrls = [...new Set(urls)];
+
+  // 5️⃣ Sayıya göre sırala (1.jpg, 2.jpg vs)
+  uniqueUrls.sort((a, b) => {
+    const getNum = (str: string) => {
+      const match = str.match(/(\d+)(?=\.\w+$)/);
+      return match ? parseInt(match[1], 10) : 0;
+    };
+    return getNum(a) - getNum(b);
+  });
+
+  console.log("FOUND IMAGES:", uniqueUrls.length);
+console.log("IMAGE LIST:");
+uniqueUrls.forEach((url, index) => {
+  console.log(`${index + 1}. ${url}`);
+});
+
+  return uniqueUrls;
 }
