@@ -280,88 +280,115 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const readCount       = chapters.filter(c => c.read).length;
   const unreadCount     = chapters.length - readCount;
 
-  return (
-    <View style={s.root}>
-      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+  return ( 
+  <View style={s.root}> <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+    {/* ── HERO IMAGE (scroll ile kayar) ── */}
+    <Animated.View
+      style={[
+        s.heroContainer,
+        {
+          transform: [{ translateY: heroTranslateY }],
+          opacity: heroOpacity,
+        },
+      ]}
+    >
+      {coverUrl ? (
+        <ImageBackground
+          source={{ uri: coverUrl }}
+          style={s.heroBg}
+          resizeMode="contain"
+        >
+          <View style={s.heroScrim} />
+        </ImageBackground>
+      ) : (
+        <View style={s.heroFallback}>
+          <Text style={{ fontSize: 64 }}>📖</Text>
+        </View>
+      )}
+    </Animated.View>
 
-      {/* ── HERO — fixed, behind scroll ── */}
-      <Animated.View style={[s.heroContainer, {
-        transform: [{ translateY: heroTranslateY }],
-        opacity: heroOpacity,
-      }]}>
-        {coverUrl ? (
-          <ImageBackground
-            source={{ uri: coverUrl }}
-            style={{ height: '95%', width: '100%',alignSelf: 'center' }}
-            resizeMode="contain"
-          >
-            {/* Dark gradient at bottom so text is legible */}
-            <View style={s.heroScrim} />
-          </ImageBackground>
-        ) : (
-          <View style={[]}>
-            <Text style={{ fontSize: 64 }}>📖</Text>
-          </View>
-        )}
+    {/* ── STICKY HEADER (title + stats) ── */}
+    <Animated.View
+      style={[
+        s.stickyHeader,
+        {
+          transform: [
+            {
+              translateY: scrollY.interpolate({
+                inputRange: [0, HERO_H - 120],
+                outputRange: [HERO_H - 120, 0],
+                extrapolate: 'clamp',
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      <View style={s.heroOverlay}>
+        <Text style={s.heroTitle} numberOfLines={1}>
+          {mangaTitle}
+        </Text>
 
-        {/* Title + stats pinned to bottom of hero */}
-        <View style={s.heroBottom}>
-          <View style={s.heroOverlay}>
-            <Text style={s.heroTitle} numberOfLines={2}>{mangaTitle}</Text>
+        <View style={s.statsRow}>
+          <StatPill value={chapters.length} label="bölüm" />
+          {downloadedCount > 0 && (
+            <StatPill value={downloadedCount} label="indirildi" color={AMBER} />
+          )}
+          {readCount > 0 && (
+            <StatPill value={readCount} label="okundu" color={BLUE} />
+          )}
+          {unreadCount > 0 && (
+            <StatPill value={unreadCount} label="okunmadı" color={MUTED} />
+          )}
+        </View>
+      </View>
+    </Animated.View>
 
-            <View style={s.statsRow}>
-              <StatPill value={chapters.length} label="bölüm" />
-              {downloadedCount > 0 && <StatPill value={downloadedCount} label="indirildi" color={AMBER} />}
-              {readCount > 0 && <StatPill value={readCount} label="okundu" color={BLUE} />}
-              {unreadCount > 0 && <StatPill value={unreadCount} label="okunmadı" color={MUTED} />}
-            </View>
+    {/* ── SCROLL CONTENT ── */}
+    <Animated.ScrollView
+      style={s.scroll}
+      contentContainerStyle={{ paddingBottom: 60 }}
+      onScroll={Animated.event(
+        [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+        { useNativeDriver: true }
+      )}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* HERO kadar boşluk */}
+      <View style={{ height: HERO_H }} />
+
+      <View style={s.card}>
+        <View style={s.dragHandle} />
+
+        {/* Section header */}
+        <View style={s.sectionRow}>
+          <Text style={s.sectionLabel}>BÖLÜMLER</Text>
+          <View style={s.countBadge}>
+            <Text style={s.countText}>{chapters.length}</Text>
           </View>
         </View>
-      </Animated.View>
 
-      {/* ── SCROLL VIEW ── */}
-      <Animated.ScrollView
-        style={s.scroll}
-        contentContainerStyle={{ paddingBottom: 60 }}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Invisible spacer pushes content below hero */}
-        <View style={{ height: HERO_H - 30 }} />
+        {/* Chapters */}
+        {chapters.map((item, index) => (
+          <ChapterRow
+            key={item.id}
+            item={item}
+            index={index}
+            progress={progresses[item.id]}
+            onOpen={openChapter}
+            onDownload={handleDownload}
+            onDelete={handleDelete}
+            onToggleRead={handleToggleRead}
+          />
+        ))}
+      </View>
+    </Animated.ScrollView>
+    ```
 
-        {/* ── Content card slides over hero ── */}
-        <View style={s.card}>
-          <View style={s.dragHandle} />
+      </View>
+    );
 
-          {/* Section header */}
-          <View style={s.sectionRow}>
-            <Text style={s.sectionLabel}>BÖLÜMLER</Text>
-            <View style={s.countBadge}>
-              <Text style={s.countText}>{chapters.length}</Text>
-            </View>
-          </View>
-
-          {/* Chapters */}
-          {chapters.map((item, index) => (
-            <ChapterRow
-              key={item.id}
-              item={item}
-              index={index}
-              progress={progresses[item.id]}
-              onOpen={openChapter}
-              onDownload={handleDownload}
-              onDelete={handleDelete}
-              onToggleRead={handleToggleRead}
-            />
-          ))}
-        </View>
-      </Animated.ScrollView>
-    </View>
-  );
 };
 
 export default ChaptersScreen;
@@ -517,4 +544,15 @@ const s = StyleSheet.create({
   rowBtnDownloaded: { backgroundColor: '#0A1F12', borderColor: '#1C3A22' },
   rowBtnDling:      { borderColor: AMBER + '55' },
   rowBtnDelete:     { backgroundColor: '#160C0C', borderColor: RED + '20' },
+  stickyHeader: {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  zIndex: 5,
+  paddingHorizontal: 0,
+  paddingVertical: 0,
+
+},
+
 });

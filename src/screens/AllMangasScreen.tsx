@@ -30,6 +30,8 @@ const CARD_W = (W - PAD * 2 - GAP * (COLS - 1)) / COLS;
 const AllMangasScreen: React.FC<Props> = ({ route, navigation }) => {
   const { mangas } = route.params as { mangas: Manga[] };
   const [query, setQuery] = useState('');
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
 
   const filtered = query.trim()
     ? mangas.filter((m) =>
@@ -39,6 +41,14 @@ const AllMangasScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const handleOpen = (m: Manga) =>
     navigation.navigate('Chapters', { mangaTitle: m.title });
+  
+  const toggleSelect = (title: string) => {
+    setSelected(prev =>
+      prev.includes(title)
+        ? prev.filter(t => t !== title)
+        : [...prev, title]
+    );
+  };
 
   return (
     <View style={s.root}>
@@ -62,7 +72,32 @@ const AllMangasScreen: React.FC<Props> = ({ route, navigation }) => {
         <Text style={s.statsText}>
           {filtered.length} / {mangas.length} manga
         </Text>
+        
       </View>
+      {selectionMode && (
+        <View style={s.selectionBar}>
+          <Text style={s.selectionText}>{selected.length} seçildi</Text>
+
+          <TouchableOpacity onPress={() => {
+            // DELETE
+          }}>
+            <Text style={s.actionBtn}>Sil</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => {
+            // EDIT
+          }}>
+            <Text style={s.actionBtn}>Düzenle</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => {
+            setSelectionMode(false);
+            setSelected([]);
+          }}>
+            <Text style={s.actionBtn}>İptal</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {filtered.length === 0 ? (
         <View style={s.empty}>
@@ -83,8 +118,18 @@ const AllMangasScreen: React.FC<Props> = ({ route, navigation }) => {
 
             return (
               <TouchableOpacity
-                style={s.card}
-                onPress={() => handleOpen(item)}
+                style={[
+                  s.card,
+                  selected.includes(item.title) && { borderColor: AMBER, borderWidth: 2 }
+                ]}
+                onPress={() => {
+                  if (selectionMode) toggleSelect(item.title);
+                  else handleOpen(item);
+                }}
+                onLongPress={() => {
+                  setSelectionMode(true);
+                  toggleSelect(item.title);
+                }}
                 activeOpacity={0.8}
               >
                 {/* Cover */}
@@ -124,6 +169,25 @@ export default AllMangasScreen;
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
 
+  selectionBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#111',
+  },
+
+  selectionText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+
+  actionBtn: {
+    color: AMBER,
+    fontWeight: '700',
+    marginLeft: 10,
+  },
+  
   // Search
   searchWrap: {
     flexDirection: 'row',
