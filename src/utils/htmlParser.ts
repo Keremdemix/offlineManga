@@ -6,47 +6,50 @@ export function parseMangaImages(html: string): string[] {
 
   let match: RegExpExecArray | null;
 
- while ((match = imgRegex.exec(html)) !== null) {
-  const imgTag = match[0];
+  while ((match = imgRegex.exec(html)) !== null) {
+    const imgTag = match[0];
 
-  const url =
-    /data-src="([^"]+)"/i.exec(imgTag)?.[1] ||
-    /data-lazy-src="([^"]+)"/i.exec(imgTag)?.[1] ||
-    /data-original="([^"]+)"/i.exec(imgTag)?.[1] ||
-    /src="([^"]+)"/i.exec(imgTag)?.[1];
+    const url =
+      /data-src="([^"]+)"/i.exec(imgTag)?.[1] ||
+      /data-lazy-src="([^"]+)"/i.exec(imgTag)?.[1] ||
+      /data-original="([^"]+)"/i.exec(imgTag)?.[1] ||
+      /src="([^"]+)"/i.exec(imgTag)?.[1];
 
-  if (!url) continue;
+    if (!url) continue;
 
-  const cleanUrl = url.trim();
+    const cleanUrl = url.trim();
 
-  // ❌ thumbnail / small image detection
-const isThumbnail =
-  /-\d{2,4}x\d{2,4}(-\d+)?\./.test(cleanUrl)
-    cleanUrl.includes("thumb") ||
-    cleanUrl.includes("thumbnail");
+    // ❌ thumbnail / small image detection
+    const isThumbnail = /-\d{2,4}x\d{2,4}(-\d+)?\./.test(cleanUrl);
+    cleanUrl.includes('thumb') || cleanUrl.includes('thumbnail');
 
-  // ❌ unwanted assets
-  const isUnwanted =
-    cleanUrl.includes("logo") ||
-    cleanUrl.includes("icon") ||
-    cleanUrl.includes("avatar") ||
-    cleanUrl.includes("banner") ||
-    cleanUrl.includes("cover") ||
-    cleanUrl.includes("covers") ||
-    cleanUrl.includes("profile") ||
-    cleanUrl.includes("author") ||
-    cleanUrl.includes("user-") ||
-    cleanUrl.includes("default");
+    // ❌ unwanted assets
+    const isUnwanted =
+      cleanUrl.includes('logo') ||
+      cleanUrl.includes('icon') ||
+      cleanUrl.includes('avatar') ||
+      cleanUrl.includes('banner') ||
+      cleanUrl.includes('cover') ||
+      cleanUrl.includes('covers') ||
+      cleanUrl.includes('profile') ||
+      cleanUrl.includes('author') ||
+      cleanUrl.includes('user-') ||
+      cleanUrl.includes('default');
 
-  // ❌ extension check (sadece image kalsın)
-  const isValidImage = /\.(png|jpg|jpeg|webp)$/i.test(cleanUrl);
+    // ❌ extension check (sadece image kalsın)
+    const isValidImage = /\.(png|jpg|jpeg|webp)$/i.test(cleanUrl);
 
-  if (!cleanUrl.startsWith("http") || !isValidImage || isThumbnail || isUnwanted) {
-    continue;
+    if (
+      !cleanUrl.startsWith('http') ||
+      !isValidImage ||
+      isThumbnail ||
+      isUnwanted
+    ) {
+      continue;
+    }
+
+    urls.push(cleanUrl);
   }
-
-  urls.push(cleanUrl);
-}
 
   // 4️⃣ Duplicate temizle
   const uniqueUrls = [...new Set(urls)];
@@ -60,11 +63,11 @@ const isThumbnail =
     return getNum(a) - getNum(b);
   });
 
-  console.log("FOUND IMAGES:", uniqueUrls.length);
-console.log("IMAGE LIST:");
-uniqueUrls.forEach((url, index) => {
-  console.log(`${index + 1}. ${url}`);
-});
+  console.log('FOUND IMAGES:', uniqueUrls.length);
+  console.log('IMAGE LIST:');
+  uniqueUrls.forEach((url, index) => {
+    console.log(`${index + 1}. ${url}`);
+  });
 
   return uniqueUrls;
 }

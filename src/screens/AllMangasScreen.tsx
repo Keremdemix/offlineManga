@@ -1,8 +1,15 @@
 // screens/AllMangasScreen.tsx
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, Image,
-  TouchableOpacity, Dimensions, TextInput, StatusBar,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Image,
+  TouchableOpacity,
+  Dimensions,
+  TextInput,
+  StatusBar,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -17,14 +24,14 @@ interface Manga {
   downloadedChapters?: number;
 }
 
-const AMBER  = '#F5A623';
-const BG     = '#0C0C0E';
-const CARD   = '#141416';
+const AMBER = '#F5A623';
+const BG = '#0C0C0E';
+const CARD = '#141416';
 const BORDER = '#1F1F24';
-const W      = Dimensions.get('window').width;
-const COLS   = 3;
-const GAP    = 10;
-const PAD    = 16;
+const W = Dimensions.get('window').width;
+const COLS = 3;
+const GAP = 10;
+const PAD = 16;
 const CARD_W = (W - PAD * 2 - GAP * (COLS - 1)) / COLS;
 
 const AllMangasScreen: React.FC<Props> = ({ route, navigation }) => {
@@ -34,19 +41,15 @@ const AllMangasScreen: React.FC<Props> = ({ route, navigation }) => {
   const [selected, setSelected] = useState<string[]>([]);
 
   const filtered = query.trim()
-    ? mangas.filter((m) =>
-        m.title.toLowerCase().includes(query.toLowerCase())
-      )
+    ? mangas.filter(m => m.title.toLowerCase().includes(query.toLowerCase()))
     : mangas;
 
   const handleOpen = (m: Manga) =>
     navigation.navigate('Chapters', { mangaTitle: m.title });
-  
+
   const toggleSelect = (title: string) => {
     setSelected(prev =>
-      prev.includes(title)
-        ? prev.filter(t => t !== title)
-        : [...prev, title]
+      prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title],
     );
   };
 
@@ -72,28 +75,33 @@ const AllMangasScreen: React.FC<Props> = ({ route, navigation }) => {
         <Text style={s.statsText}>
           {filtered.length} / {mangas.length} manga
         </Text>
-        
       </View>
       {selectionMode && (
         <View style={s.selectionBar}>
           <Text style={s.selectionText}>{selected.length} seçildi</Text>
 
-          <TouchableOpacity onPress={() => {
-            // DELETE
-          }}>
+          <TouchableOpacity
+            onPress={() => {
+              // DELETE
+            }}
+          >
             <Text style={s.actionBtn}>Sil</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => {
-            // EDIT
-          }}>
+          <TouchableOpacity
+            onPress={() => {
+              // EDIT
+            }}
+          >
             <Text style={s.actionBtn}>Düzenle</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => {
-            setSelectionMode(false);
-            setSelected([]);
-          }}>
+          <TouchableOpacity
+            onPress={() => {
+              setSelectionMode(false);
+              setSelected([]);
+            }}
+          >
             <Text style={s.actionBtn}>İptal</Text>
           </TouchableOpacity>
         </View>
@@ -107,20 +115,25 @@ const AllMangasScreen: React.FC<Props> = ({ route, navigation }) => {
       ) : (
         <FlatList
           data={filtered}
-          keyExtractor={(item) => item.title}
+          keyExtractor={item => item.title}
           numColumns={COLS}
           contentContainerStyle={s.grid}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => {
             const dlPct = item.totalChapters
-              ? Math.round(((item.downloadedChapters ?? 0) / item.totalChapters) * 100)
+              ? Math.round(
+                  ((item.downloadedChapters ?? 0) / item.totalChapters) * 100,
+                )
               : 0;
 
             return (
               <TouchableOpacity
                 style={[
                   s.card,
-                  selected.includes(item.title) && { borderColor: AMBER, borderWidth: 2 }
+                  selected.includes(item.title) && {
+                    borderColor: AMBER,
+                    borderWidth: 2,
+                  },
                 ]}
                 onPress={() => {
                   if (selectionMode) toggleSelect(item.title);
@@ -150,7 +163,9 @@ const AllMangasScreen: React.FC<Props> = ({ route, navigation }) => {
 
                 {/* Title */}
                 <View style={s.cardInfo}>
-                  <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
+                  <Text style={s.cardTitle} numberOfLines={2}>
+                    {item.title}
+                  </Text>
                   {item.totalChapters ? (
                     <Text style={s.cardMeta}>{item.totalChapters} bölüm</Text>
                   ) : null}
@@ -187,7 +202,7 @@ const s = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 10,
   },
-  
+
   // Search
   searchWrap: {
     flexDirection: 'row',
@@ -202,11 +217,16 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
-  searchIcon:  { fontSize: 14 },
+  searchIcon: { fontSize: 14 },
   searchInput: { flex: 1, paddingVertical: 12, fontSize: 14, color: '#e0e0e0' },
 
   statsRow: { paddingHorizontal: PAD, marginBottom: 14 },
-  statsText: { fontSize: 11, fontWeight: '700', color: '#2A2A30', letterSpacing: 1 },
+  statsText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2A2A30',
+    letterSpacing: 1,
+  },
 
   // Grid
   grid: { paddingHorizontal: PAD, paddingBottom: 40 },
@@ -223,8 +243,12 @@ const s = StyleSheet.create({
     // remove margin from every 3rd item
   },
 
-  cover:   { width: '100%', height: CARD_W * 1.45 },
-  coverPh: { backgroundColor: '#1A1A1E', justifyContent: 'center', alignItems: 'center' },
+  cover: { width: '100%', height: CARD_W * 1.45 },
+  coverPh: {
+    backgroundColor: '#1A1A1E',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 
   progressOverlay: {
     height: 2,
@@ -233,12 +257,22 @@ const s = StyleSheet.create({
   },
   progressFill: { height: 2, backgroundColor: AMBER },
 
-  cardInfo:  { padding: 7 },
-  cardTitle: { fontSize: 11, fontWeight: '700', color: '#C8C8D0', lineHeight: 15 },
-  cardMeta:  { fontSize: 10, color: '#9e9e9eff', marginTop: 3 },
+  cardInfo: { padding: 7 },
+  cardTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#C8C8D0',
+    lineHeight: 15,
+  },
+  cardMeta: { fontSize: 10, color: '#9e9e9eff', marginTop: 3 },
 
   // Empty
-  empty:      { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 60 },
+  empty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 60,
+  },
   emptyEmoji: { fontSize: 42, marginBottom: 12 },
-  emptyText:  { fontSize: 15, fontWeight: '700', color: '#9e9e9eff' },
+  emptyText: { fontSize: 15, fontWeight: '700', color: '#9e9e9eff' },
 });

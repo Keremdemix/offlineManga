@@ -1,15 +1,16 @@
 // screens/ChaptersScreen.tsx
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, ImageBackground,
-  Dimensions, Animated, StatusBar,
+  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator,
+  Alert, Image, Dimensions, Animated, StatusBar, Platform,
+  Modal, TextInput, KeyboardAvoidingView, ScrollView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { downloadChapter, DownloadProgress } from '../actions/downloadActions';
 import { extractChapterNumber } from '../utils/chapterUtils';
+import AddMangaModal from '../components/AddMangaModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chapters'>;
 
@@ -19,540 +20,479 @@ interface Chapter {
   date: string;
   pages?: string[];
   downloaded?: boolean;
-  downloading?: boolean;
   chapterNumber?: number;
   read?: boolean;
 }
 
-const AMBER   = '#F5A623';
-const GREEN   = '#2ecc71';
-const RED     = '#e74c3c';
-const BLUE    = '#4A90E2';
-const BG      = '#0A0A0C';
-const CARD    = '#17171B';
-const BORDER  = '#1E1E24';
-const TEXT    = '#E8E8F0';
-const MUTED   = '#3A3A44';
+const T = {
+  bg0:       '#07070A',
+  bg1:       '#0E0E14',
+  bg2:       '#15151E',
+  bg3:       '#1C1C28',
+  line:      '#232330',
+  lineHi:    '#2E2E40',
+  gold:      '#D4A843',
+  goldDim:   '#6B5322',
+  goldPale:  '#F5D98A',
+  teal:      '#2DD4BF',
+  tealDim:   '#134E4A',
+  violet:    '#8B5CF6',
+  violetDim: '#2E1065',
+  red:       '#F87171',
+  redDim:    '#450A0A',
+  ink:       '#E8E8F2',
+  inkMid:    '#8888A0',
+  inkDim:    '#404055',
+};
 
-const { width: W, height: H } = Dimensions.get('window');
-const HERO_H = Math.round(H * 0.65);
+const { height: H } = Dimensions.get('window');
+const SB_H    = Platform.OS === 'ios' ? 44 : (StatusBar.currentHeight ?? 24);
+const COVER_H = Math.round(H * 0.58);
+const PANEL_H = 130;
+const BAR_H   = 46;
+const STICK_AT = COVER_H - SB_H;
 
-// ─── Stat Pill ────────────────────────────────────────────────────────────────
-const StatPill: React.FC<{ value: number; label: string; color?: string }> = ({
-  value, label, color = TEXT,
-}) => (
-  <View style={sp.pill}>
-    <Text style={[sp.num, { color }]}>{value}</Text>
-    <Text style={sp.label}>{label}</Text>
-  </View>
-);
+// Panelin başlangıç top'u: kapağın hemen altı
+const PANEL_TOP = COVER_H;
+// Panel scroll sonunda nerede durur: SB_H
+// Yani pan translateY = 0 → PANEL_TOP pozisyonda, max → -(PANEL_TOP - SB_H)
+const PANEL_TRAVEL = PANEL_TOP;
 
-// ─── Chapter Row ─────────────────────────────────────────────────────────────
-const ChapterRow: React.FC<{
-  item: Chapter;
-  index: number;
+// ─── AddChapterModal ──────────────────────────────────────────────────────────
+interface AddChapterModalProps {
+  visible: boolean;
+  onClose: () => void;
+  onAdd: (link: string) => void;
+}
+const AddChapterModal: React.FC<AddChapterModalProps> = ({ visible, onClose, onAdd }) => {
+  const [link, setLink] = useState('');
+  const handleAdd = () => {
+    const t = link.trim();
+    if (!t) { Alert.alert('Hata', 'Lütfen bir bölüm linki girin.'); return; }
+    onAdd(t); setLink(''); onClose();
+  };
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView style={m.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <View style={m.sheet}>
+          <View style={m.handle} />
+          <Text style={m.sheetTitle}>Yeni Bölüm Ekle</Text>
+          <Text style={m.sheetSub}>Bölüm linki veya URL yapıştır</Text>
+          <View style={m.inputWrap}>
+            <Text style={m.inputIcon}>🔗</Text>
+            <TextInput
+              style={m.input} value={link} onChangeText={setLink}
+              placeholder="https://..." placeholderTextColor={T.inkDim}
+              autoCapitalize="none" autoCorrect={false}
+              returnKeyType="done" onSubmitEditing={handleAdd}
+            />
+          </View>
+          <View style={m.btnRow}>
+            <TouchableOpacity style={m.btnCancel} onPress={onClose} activeOpacity={0.7}>
+              <Text style={m.btnCancelText}>İptal</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={m.btnAdd} onPress={handleAdd} activeOpacity={0.8}>
+              <Text style={m.btnAddText}>Ekle</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+};
+const m = StyleSheet.create({
+  overlay:      { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.65)' },
+  sheet:        { backgroundColor: T.bg1, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: T.lineHi, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 16 },
+  handle:       { width: 40, height: 4, borderRadius: 2, backgroundColor: T.lineHi, alignSelf: 'center', marginBottom: 24 },
+  sheetTitle:   { fontSize: 20, fontWeight: '800', color: T.ink, marginBottom: 4 },
+  sheetSub:     { fontSize: 13, color: T.inkMid, marginBottom: 24 },
+  inputWrap:    { flexDirection: 'row', alignItems: 'center', backgroundColor: T.bg2, borderRadius: 14, borderWidth: 1, borderColor: T.lineHi, paddingHorizontal: 14, marginBottom: 20 },
+  inputIcon:    { fontSize: 16, marginRight: 10 },
+  input:        { flex: 1, height: 50, fontSize: 14, color: T.ink },
+  btnRow:       { flexDirection: 'row', gap: 12 },
+  btnCancel:    { flex: 1, height: 50, borderRadius: 14, backgroundColor: T.bg2, borderWidth: 1, borderColor: T.lineHi, justifyContent: 'center', alignItems: 'center' },
+  btnCancelText:{ fontSize: 15, fontWeight: '700', color: T.inkMid },
+  btnAdd:       { flex: 2, height: 50, borderRadius: 14, backgroundColor: T.gold, justifyContent: 'center', alignItems: 'center' },
+  btnAddText:   { fontSize: 15, fontWeight: '800', color: T.bg0 },
+});
+
+// ─── ChapterRow ───────────────────────────────────────────────────────────────
+interface RowProps {
+  item: Chapter; index: number; total: number;
   progress: DownloadProgress | undefined;
-  onOpen: (ch: Chapter) => void;
-  onDownload: (ch: Chapter) => void;
-  onDelete: (ch: Chapter) => void;
-  onToggleRead: (ch: Chapter) => void;
-}> = ({ item, index, progress, onOpen, onDownload, onDelete, onToggleRead }) => {
-  const isDownloading = progress?.status === 'downloading';
-  const pct = isDownloading && (progress?.total ?? 0) > 0
-    ? Math.round(((progress?.current ?? 0) / (progress?.total ?? 1)) * 100)
-    : 0;
-
-  const label = item.chapterNumber != null
-    ? `Bölüm ${item.chapterNumber}`
-    : `Bölüm ${index + 1}`;
+  onOpen: () => void; onDownload: () => void;
+  onDelete: () => void; onToggleRead: () => void;
+}
+const ChapterRow: React.FC<RowProps> = ({ item, index, total, progress, onOpen, onDownload, onDelete, onToggleRead }) => {
+  const isDling = progress?.status === 'downloading';
+  const pct = isDling && (progress?.total ?? 0) > 0
+    ? Math.round(((progress?.current ?? 0) / progress!.total!) * 100) : 0;
+  const num = item.chapterNumber != null ? item.chapterNumber : total - index;
+  const accentColor = item.read ? T.violet : item.downloaded ? T.teal : T.inkDim;
 
   return (
-    <TouchableOpacity
-      style={[s.chRow, item.read && s.chRowRead]}
-      onPress={() => onOpen(item)}
-      activeOpacity={0.75}
-    >
-      {/* Left accent bar */}
-      <View style={[
-        s.accent,
-        item.read            && s.accentRead,
-        item.downloaded && !item.read && s.accentDone,
-      ]} />
-
-      {/* Info */}
-      <View style={s.chInfo}>
-        <View style={s.chTopRow}>
-          <Text style={[
-            s.chLabel,
-            item.downloaded && s.chLabelDone,
-            item.read        && s.chLabelRead,
-          ]}>{label}</Text>
+    <TouchableOpacity style={[r.row, item.read && r.rowRead]} onPress={onOpen} activeOpacity={0.65}>
+      <View style={r.numSide}>
+        <Text style={[r.bigNum, { color: accentColor }]}>{String(num).padStart(2, '0')}</Text>
+        {index < total - 1 && <View style={[r.connector, { backgroundColor: accentColor + '25' }]} />}
+      </View>
+      <View style={r.content}>
+        <View style={r.topRow}>
+          <Text style={[r.chTitle, item.read && r.chTitleRead]}>{`Bölüm ${num}`}</Text>
+          {item.downloaded && !isDling && (
+            <View style={[r.pill, { backgroundColor: T.tealDim, borderColor: T.teal + '30' }]}>
+              <Text style={[r.pillTxt, { color: T.teal }]}>İNDİRİLDİ</Text>
+            </View>
+          )}
           {item.read && (
-            <View style={s.readBadge}>
-              <Text style={s.readBadgeText}>OKUNDU</Text>
+            <View style={[r.pill, { backgroundColor: T.violetDim, borderColor: T.violet + '30' }]}>
+              <Text style={[r.pillTxt, { color: T.violet }]}>OKUNDU</Text>
             </View>
           )}
         </View>
-        <Text style={s.chDate}>{item.date?.slice(0, 10)}</Text>
-        {isDownloading && (
-          <View style={s.progressBg}>
-            <View style={[s.progressFill, { width: `${pct}%` as any }]} />
-            <Text style={s.progressPct}>{pct}%</Text>
+        {!!item.date && <Text style={r.date}>{item.date.slice(0, 10)}</Text>}
+        {isDling && (
+          <View style={r.progRow}>
+            <View style={r.progTrack}><View style={[r.progBar, { width: `${pct}%` as any }]} /></View>
+            <Text style={r.progNum}>{pct}%</Text>
           </View>
         )}
       </View>
-
-      {/* ── Always-visible action buttons ── */}
-      <View style={s.rowActions}>
-
-        {/* Read/Unread toggle */}
-        <TouchableOpacity
-          style={[s.rowBtn, item.read ? s.rowBtnIsRead : s.rowBtnNotRead]}
-          onPress={() => onToggleRead(item)}
-          hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-        >
-          <Text style={{ fontSize: 13, fontWeight: '800', color: item.read ? BLUE : '#2A3A2A' }}>
-            {item.read ? '○' : '✓'}
-          </Text>
+      <View style={r.actions}>
+        <TouchableOpacity style={[r.ico, item.read && r.icoActive]} onPress={onToggleRead} hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}>
+          <Text style={{ fontSize: 14, color: item.read ? T.violet : T.inkDim }}>{item.read ? '✦' : '✧'}</Text>
         </TouchableOpacity>
-
-        {/* Download */}
         <TouchableOpacity
-          style={[
-            s.rowBtn,
-            item.downloaded ? s.rowBtnDownloaded : null,
-            isDownloading   ? s.rowBtnDling      : null,
-          ]}
+          style={[r.ico, item.downloaded && r.icoGreen, isDling && r.icoAmber]}
           onPress={() => {
             if (item.downloaded) {
-              Alert.alert('Tekrar indir?', 'Bu bölümü yeniden indirmek istiyor musun?', [
+              Alert.alert('Tekrar İndir?', 'Bu bölümü yeniden indirmek istiyor musun?', [
                 { text: 'İptal', style: 'cancel' },
-                { text: 'İndir', onPress: () => onDownload(item) },
+                { text: 'İndir', onPress: onDownload },
               ]);
-            } else onDownload(item);
+            } else { onDownload(); }
           }}
-          disabled={isDownloading}
-          hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          disabled={isDling} hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
         >
-          {isDownloading
-            ? <ActivityIndicator size="small" color={AMBER} />
-            : <Text style={{ fontSize: 18, fontWeight: '900', color: item.downloaded ? GREEN : '#333' }}>
-                {item.downloaded ? '↻' : '↓'}
-              </Text>
+          {isDling
+            ? <ActivityIndicator size="small" color={T.gold} />
+            : <Text style={{ fontSize: 15, fontWeight: '800', color: item.downloaded ? T.teal : T.inkDim }}>{item.downloaded ? '✓' : '↓'}</Text>
           }
         </TouchableOpacity>
-
-        {/* Delete */}
-        <TouchableOpacity
-          style={[s.rowBtn, s.rowBtnDelete]}
-          onPress={() => onDelete(item)}
-          hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-        >
-          <Text style={{ fontSize: 12, fontWeight: '900', color: '#4A1515' }}>✕</Text>
+        <TouchableOpacity style={[r.ico, r.icoDel]} onPress={onDelete} hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}>
+          <Text style={{ fontSize: 11, fontWeight: '900', color: T.redDim + 'CC' }}>✕</Text>
         </TouchableOpacity>
-
       </View>
     </TouchableOpacity>
   );
 };
+const r = StyleSheet.create({
+  row:         { flexDirection: 'row', alignItems: 'flex-start', paddingRight: 14, paddingVertical: 14, backgroundColor: T.bg0 },
+  rowRead:     { opacity: 0.48 },
+  numSide:     { width: 68, alignItems: 'center', paddingTop: 2 },
+  bigNum:      { fontSize: 22, fontWeight: '900', letterSpacing: -1, lineHeight: 26 },
+  connector:   { width: 1.5, flex: 1, marginTop: 6, minHeight: 20 },
+  content:     { flex: 1, paddingRight: 10 },
+  topRow:      { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 4 },
+  chTitle:     { fontSize: 15, fontWeight: '700', color: T.ink, letterSpacing: -0.2 },
+  chTitleRead: { color: T.inkDim },
+  date:        { fontSize: 11, color: T.inkDim },
+  pill:        { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
+  pillTxt:     { fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
+  progRow:     { flexDirection: 'row', alignItems: 'center', marginTop: 7, gap: 8 },
+  progTrack:   { flex: 1, height: 2.5, backgroundColor: T.bg3, borderRadius: 2, overflow: 'hidden' },
+  progBar:     { height: 2.5, backgroundColor: T.gold, borderRadius: 2 },
+  progNum:     { fontSize: 10, fontWeight: '700', color: T.gold, minWidth: 30 },
+  actions:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingTop: 2 },
+  ico:         { width: 30, height: 30, borderRadius: 8, backgroundColor: T.bg1, borderWidth: 1, borderColor: T.line, justifyContent: 'center', alignItems: 'center' },
+  icoActive:   { backgroundColor: T.violetDim, borderColor: T.violet + '40' },
+  icoGreen:    { backgroundColor: T.tealDim,   borderColor: T.teal   + '30' },
+  icoAmber:    { borderColor: T.gold + '50' },
+  icoDel:      { backgroundColor: T.redDim,    borderColor: T.red    + '20' },
+});
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// ─── ChaptersScreen ───────────────────────────────────────────────────────────
 const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const { mangaTitle } = route.params;
   const [chapters,   setChapters]   = useState<Chapter[]>([]);
   const [coverUrl,   setCoverUrl]   = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [progresses, setProgresses] = useState<Record<string, DownloadProgress>>({});
+  const [addVisible, setAddVisible] = useState(false);
+
   const activeDownloads = useRef<Set<string>>(new Set());
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Hero parallax — moves up slower than scroll
-  const heroTranslateY = scrollY.interpolate({
-    inputRange: [0, HERO_H],
-    outputRange: [0, -(HERO_H * 0.35)],
+  // Kapak: parallax + fade
+  const coverOp = scrollY.interpolate({ inputRange: [0, STICK_AT], outputRange: [1, 0.18], extrapolate: 'clamp' });
+  const coverTY = scrollY.interpolate({ inputRange: [0, STICK_AT], outputRange: [0, -(STICK_AT * 0.26)], extrapolate: 'clamp' });
+  const coverScale = scrollY.interpolate({ inputRange: [-60, 0], outputRange: [1.06, 1], extrapolate: 'clamp' });
+
+  // Panel: başlangıçta PANEL_TOP'ta, scroll sonunda SB_H'de sabitlenir
+  const panelTY = scrollY.interpolate({
+    inputRange: [0, STICK_AT],
+    outputRange: [0, -PANEL_TRAVEL],
     extrapolate: 'clamp',
   });
-  // Hero fades as content covers it
-  const heroOpacity = scrollY.interpolate({
-    inputRange: [0, HERO_H * 0.45],
-    outputRange: [1, 0.2],
-    extrapolate: 'clamp',
-  });
+
+  // Panel'in ALTINDA kalan boşluğu kapatmak için siyah dolgu bloğu.
+  // Bu blok panel ile aynı translateY'i kullanır, panel'in hemen altında durur
+  // ve ekranın en altına kadar uzanır → kapak hiç görünmez.
+  // Yüksekliği: H yeter (liste zaten üstünde olduğu için görünmez)
+  const fillerTY = panelTY; // aynı animasyon
+
+  // FAB
+  const fabScale = scrollY.interpolate({ inputRange: [0, 80, 160], outputRange: [1, 0.75, 0], extrapolate: 'clamp' });
+  const fabOp    = scrollY.interpolate({ inputRange: [0, 120],      outputRange: [1, 0],        extrapolate: 'clamp' });
 
   const loadChapters = useCallback(async () => {
     try {
-      const data = await AsyncStorage.getItem('localMangas');
-      if (!data) return;
-      const parsed = JSON.parse(data);
-      const idx = parsed.findIndex((m: any) => m.title === mangaTitle);
+      const raw = await AsyncStorage.getItem('localMangas');
+      if (!raw) return;
+      const list = JSON.parse(raw);
+      const idx  = list.findIndex((m: any) => m.title === mangaTitle);
       if (idx === -1) return;
-
-      const manga = parsed[idx];
+      const manga = list[idx];
       setCoverUrl(manga.cover || null);
-
-      let updated = false;
+      let dirty = false;
       const fixed: Chapter[] = (manga.chapters || []).map((c: any) => {
-        const ch: Chapter = { ...c };
+        const ch = { ...c } as Chapter;
         if (ch.chapterNumber == null || isNaN(Number(ch.chapterNumber))) {
           const n = extractChapterNumber(ch.link);
-          if (n != null) { ch.chapterNumber = n; updated = true; }
+          if (n != null) { ch.chapterNumber = n; dirty = true; }
         }
         return ch;
       });
-      if (updated) {
-        parsed[idx].chapters = fixed;
-        await AsyncStorage.setItem('localMangas', JSON.stringify(parsed));
-      }
-      const sorted = [...fixed].sort((a, b) => {
+      if (dirty) { list[idx].chapters = fixed; await AsyncStorage.setItem('localMangas', JSON.stringify(list)); }
+      setChapters([...fixed].sort((a, b) => {
         const an = a.chapterNumber ?? -1, bn = b.chapterNumber ?? -1;
         if (an !== -1 && bn !== -1) return bn - an;
         return (b.date ?? '').localeCompare(a.date ?? '');
-      });
-      setChapters(sorted);
-    } catch (e) { console.error('Chapter load error:', e); }
+      }));
+    } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }, [mangaTitle]);
 
   useEffect(() => { loadChapters(); }, [loadChapters]);
 
-  const handleDownload = async (chapter: Chapter) => {
-    if (activeDownloads.current.has(chapter.id)) return;
-    activeDownloads.current.add(chapter.id);
-    await downloadChapter(mangaTitle, chapter.id, chapter.link, (p) => {
-      setProgresses(prev => ({ ...prev, [chapter.id]: p }));
-      if (p.status === 'done' || p.status === 'error') {
-        activeDownloads.current.delete(chapter.id);
-        loadChapters();
-      }
+  const handleAddChapter = async (link: string) => {
+    try {
+      const raw = await AsyncStorage.getItem('localMangas');
+      if (!raw) return;
+      const list = JSON.parse(raw);
+      const idx  = list.findIndex((m: any) => m.title === mangaTitle);
+      if (idx === -1) return;
+      const chapterNumber = extractChapterNumber(link) ?? undefined;
+      list[idx].chapters  = [{ id: `manual_${Date.now()}`, link, date: new Date().toISOString().slice(0, 10), chapterNumber }, ...(list[idx].chapters || [])];
+      await AsyncStorage.setItem('localMangas', JSON.stringify(list));
+      loadChapters();
+    } catch { Alert.alert('Hata', 'Bölüm eklenirken bir hata oluştu.'); }
+  };
+
+  const handleDownload = async (ch: Chapter) => {
+    if (activeDownloads.current.has(ch.id)) return;
+    activeDownloads.current.add(ch.id);
+    await downloadChapter(mangaTitle, ch.id, ch.link, (p) => {
+      setProgresses(prev => ({ ...prev, [ch.id]: p }));
+      if (p.status === 'done' || p.status === 'error') { activeDownloads.current.delete(ch.id); loadChapters(); }
     });
   };
 
   const openChapter = (ch: Chapter) => {
-    if (ch.downloaded && ch.pages?.length)
-      navigation.navigate('Manga', { mangaLink: ch.link, localPages: ch.pages });
-    else
-      navigation.navigate('Manga', { mangaLink: ch.link });
+    if (ch.downloaded && ch.pages?.length) navigation.navigate('Manga', { mangaLink: ch.link, localPages: ch.pages });
+    else navigation.navigate('Manga', { mangaLink: ch.link });
   };
 
-  const handleDelete = (chapter: Chapter) => {
-    Alert.alert(
-      'Bölümü Sil',
-      `"${chapter.chapterNumber != null ? `Bölüm ${chapter.chapterNumber}` : 'Bu bölüm'}" silinsin mi?`,
-      [
-        { text: 'İptal', style: 'cancel' },
-        {
-          text: 'Sil', style: 'destructive',
-          onPress: async () => {
-            const data = await AsyncStorage.getItem('localMangas');
-            if (!data) return;
-            const parsed = JSON.parse(data);
-            const idx = parsed.findIndex((m: any) => m.title === mangaTitle);
-            if (idx === -1) return;
-            parsed[idx].chapters = parsed[idx].chapters.filter((c: any) => c.id !== chapter.id);
-            await AsyncStorage.setItem('localMangas', JSON.stringify(parsed));
-            loadChapters();
-          },
-        },
-      ]
-    );
+  const handleDelete = (ch: Chapter) => {
+    const name = ch.chapterNumber != null ? `Bölüm ${ch.chapterNumber}` : 'Bu bölüm';
+    Alert.alert('Sil', `"${name}" silinsin mi?`, [
+      { text: 'İptal', style: 'cancel' },
+      { text: 'Sil', style: 'destructive', onPress: async () => {
+        const raw = await AsyncStorage.getItem('localMangas');
+        if (!raw) return;
+        const list = JSON.parse(raw);
+        const idx  = list.findIndex((m: any) => m.title === mangaTitle);
+        if (idx === -1) return;
+        list[idx].chapters = list[idx].chapters.filter((c: any) => c.id !== ch.id);
+        await AsyncStorage.setItem('localMangas', JSON.stringify(list));
+        loadChapters();
+      }},
+    ]);
   };
 
-  const handleToggleRead = async (chapter: Chapter) => {
-    const data = await AsyncStorage.getItem('localMangas');
-    if (!data) return;
-    const parsed = JSON.parse(data);
-    const idx = parsed.findIndex((m: any) => m.title === mangaTitle);
+  const handleToggleRead = async (ch: Chapter) => {
+    const raw = await AsyncStorage.getItem('localMangas');
+    if (!raw) return;
+    const list = JSON.parse(raw);
+    const idx  = list.findIndex((m: any) => m.title === mangaTitle);
     if (idx === -1) return;
-    parsed[idx].chapters = parsed[idx].chapters.map((c: any) =>
-      c.id === chapter.id ? { ...c, read: !c.read } : c
-    );
-    await AsyncStorage.setItem('localMangas', JSON.stringify(parsed));
+    list[idx].chapters = list[idx].chapters.map((c: any) => c.id === ch.id ? { ...c, read: !c.read } : c);
+    await AsyncStorage.setItem('localMangas', JSON.stringify(list));
     loadChapters();
   };
 
   if (loading) return (
-    <View style={s.centered}>
-      <ActivityIndicator size="large" color={AMBER} />
-    </View>
+    <View style={s.centered}><ActivityIndicator size="large" color={T.gold} /></View>
   );
 
-  const downloadedCount = chapters.filter(c => c.downloaded).length;
-  const readCount       = chapters.filter(c => c.read).length;
-  const unreadCount     = chapters.length - readCount;
+  const dlCount   = chapters.filter(c => c.downloaded).length;
+  const readCount = chapters.filter(c => c.read).length;
+  const unread    = chapters.length - readCount;
 
-  return ( 
-  <View style={s.root}> <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-    {/* ── HERO IMAGE (scroll ile kayar) ── */}
-    <Animated.View
-      style={[
-        s.heroContainer,
-        {
-          transform: [{ translateY: heroTranslateY }],
-          opacity: heroOpacity,
-        },
-      ]}
-    >
-      {coverUrl ? (
-        <ImageBackground
-          source={{ uri: coverUrl }}
-          style={s.heroBg}
-          resizeMode="contain"
-        >
-          <View style={s.heroScrim} />
-        </ImageBackground>
-      ) : (
-        <View style={s.heroFallback}>
-          <Text style={{ fontSize: 64 }}>📖</Text>
-        </View>
-      )}
-    </Animated.View>
+  return (
+    <View style={s.root}>
+      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
 
-    {/* ── STICKY HEADER (title + stats) ── */}
-    <Animated.View
-      style={[
-        s.stickyHeader,
-        {
-          transform: [
-            {
-              translateY: scrollY.interpolate({
-                inputRange: [0, HERO_H - 120],
-                outputRange: [HERO_H - 120, 0],
-                extrapolate: 'clamp',
-              }),
-            },
-          ],
-        },
-      ]}
-    >
-      <View style={s.heroOverlay}>
-        <Text style={s.heroTitle} numberOfLines={1}>
-          {mangaTitle}
-        </Text>
+      {/* ── KAPAK ─────────────────────────────────────────────────────────── */}
+      <Animated.View
+        style={[s.coverWrap, { opacity: coverOp, transform: [{ translateY: coverTY }, { scale: coverScale }] }]}
+        pointerEvents="none"
+      >
+        {coverUrl
+          ? <Image source={{ uri: coverUrl }} style={s.coverImg} resizeMode="contain" />
+          : <View style={s.coverPlaceholder}><Text style={{ fontSize: 80 }}>📚</Text></View>
+        }
+        {/* Üst ve alt vignette */}
+      </Animated.View>
 
-        <View style={s.statsRow}>
-          <StatPill value={chapters.length} label="bölüm" />
-          {downloadedCount > 0 && (
-            <StatPill value={downloadedCount} label="indirildi" color={AMBER} />
-          )}
-          {readCount > 0 && (
-            <StatPill value={readCount} label="okundu" color={BLUE} />
-          )}
-          {unreadCount > 0 && (
-            <StatPill value={unreadCount} label="okunmadı" color={MUTED} />
-          )}
-        </View>
-      </View>
-    </Animated.View>
+      {/* ── PANEL ALTINDA BOŞ ALAN KAPATAN SİYAH DOLGU ────────────────────
+          Panel yukarı çıkarken altında kalan kapak görüntüsünü gizler.
+          Panel'in tam altında başlar (top = PANEL_TOP + PANEL_H + BAR_H),
+          oradan ekranın sonuna kadar uzanır.
+          Aynı translateY animasyonunu kullanır → panel ile birlikte kayar.
+          ────────────────────────────────────────────────────────────────── */}
+      <Animated.View
+        style={[s.filler, {
+          top: PANEL_TOP + PANEL_H + BAR_H,
+          transform: [{ translateY: fillerTY }],
+        }]}
+        pointerEvents="none"
+      />
 
-    {/* ── SCROLL CONTENT ── */}
-    <Animated.ScrollView
-      style={s.scroll}
-      contentContainerStyle={{ paddingBottom: 60 }}
-      onScroll={Animated.event(
-        [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-        { useNativeDriver: true }
-      )}
-      scrollEventThrottle={16}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* HERO kadar boşluk */}
-      <View style={{ height: HERO_H }} />
-
-      <View style={s.card}>
-        <View style={s.dragHandle} />
-
-        {/* Section header */}
-        <View style={s.sectionRow}>
-          <Text style={s.sectionLabel}>BÖLÜMLER</Text>
-          <View style={s.countBadge}>
-            <Text style={s.countText}>{chapters.length}</Text>
+      {/* ── HEADER PANEL ──────────────────────────────────────────────────── */}
+      <Animated.View
+        style={[s.panel, { top: PANEL_TOP, transform: [{ translateY: panelTY }] }]}
+        pointerEvents="box-none"
+      >
+        {/* Info alanı */}
+        <View style={s.info}>
+          <View style={s.infoTop}>
+            <Text style={s.mangaTitle} numberOfLines={2}>{mangaTitle}</Text>
           </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.statScroll}>
+            <View style={s.statItem}><Text style={[s.statNum, { color: T.goldPale }]}>{chapters.length}</Text><Text style={s.statLbl}>bölüm</Text></View>
+            <View style={s.statDivider} />
+            <View style={s.statItem}><Text style={[s.statNum, { color: T.teal }]}>{dlCount}</Text><Text style={s.statLbl}>indirildi</Text></View>
+            <View style={s.statDivider} />
+            <View style={s.statItem}><Text style={[s.statNum, { color: T.violet }]}>{readCount}</Text><Text style={s.statLbl}>okundu</Text></View>
+            <View style={s.statDivider} />
+            <View style={s.statItem}><Text style={[s.statNum, { color: T.inkMid }]}>{unread}</Text><Text style={s.statLbl}>bekliyor</Text></View>
+          </ScrollView>
         </View>
 
-        {/* Chapters */}
+        {/* Bölümler şeridi */}
+        <View style={s.strip}>
+          <View style={s.stripLeft}>
+            <View style={s.stripDot} />
+            <Text style={s.stripLabel}>BÖLÜMLER</Text>
+          </View>
+          <View style={s.countTag}><Text style={s.countTagTxt}>{chapters.length}</Text></View>
+        </View>
+      </Animated.View>
+
+      {/* ── LİSTE ─────────────────────────────────────────────────────────── */}
+      <Animated.ScrollView
+        style={s.scroll}
+        contentContainerStyle={{ paddingTop: COVER_H + PANEL_H + BAR_H, paddingBottom: 120 }}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true },
+        )}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+      >
         {chapters.map((item, index) => (
           <ChapterRow
-            key={item.id}
-            item={item}
-            index={index}
+            key={item.id} item={item} index={index} total={chapters.length}
             progress={progresses[item.id]}
-            onOpen={openChapter}
-            onDownload={handleDownload}
-            onDelete={handleDelete}
-            onToggleRead={handleToggleRead}
+            onOpen={() => openChapter(item)}
+            onDownload={() => handleDownload(item)}
+            onDelete={() => handleDelete(item)}
+            onToggleRead={() => handleToggleRead(item)}
           />
         ))}
-      </View>
-    </Animated.ScrollView>
-    ```
+      </Animated.ScrollView>
 
-      </View>
-    );
+      {/* ── FAB ───────────────────────────────────────────────────────────── */}
+      <Animated.View style={[s.fabWrap, { opacity: fabOp, transform: [{ scale: fabScale }] }]}>
+        <TouchableOpacity style={s.fab} onPress={() => setAddVisible(true)} activeOpacity={0.85}>
+          <View style={s.fabRing} />
+          <Text style={s.fabPlus}>+</Text>
+        </TouchableOpacity>
+        <Text style={s.fabHint}>Bölüm Ekle</Text>
+      </Animated.View>
 
+      {/* ── MODAL ─────────────────────────────────────────────────────────── */}
+      <AddChapterModal visible={addVisible} onClose={() => setAddVisible(false)} onAdd={handleAddChapter} />
+    </View>
+  );
 };
 
 export default ChaptersScreen;
 
-// ─── Stat pill styles ─────────────────────────────────────────────────────────
-const sp = StyleSheet.create({
-  pill: {
-    flexDirection: 'row', alignItems: 'baseline', gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.50)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.09)',
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
-  },
-  num:   { fontSize: 13, fontWeight: '900' },
-  label: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.38)' },
-});
-
-// ─── Main styles ──────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  root:    { flex: 1, backgroundColor: BG },
-  centered:{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: BG },
+  root:     { flex: 1, backgroundColor: T.bg0 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: T.bg0 },
 
-  // Hero
-  heroContainer: {
+  coverWrap: { position: 'absolute', top: 0, left: 0, right: 0, height: COVER_H, justifyContent: 'center', alignItems: 'center', zIndex: 1, overflow: 'hidden' },
+  coverImg:  { width: '80%', height: '100%' },
+  coverPlaceholder: { flex: 1, backgroundColor: T.bg1, justifyContent: 'center', alignItems: 'center' },
+  vigTop:    { position: 'absolute', top: 0, left: 0, right: 0, height: SB_H + 30, backgroundColor: 'rgba(7,7,10,0.75)' },
+  vigBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: PANEL_H + BAR_H + 30, backgroundColor: 'rgba(7,7,10,0.92)' },
+
+  // Boşluk kapatan siyah dolgu — panel altından ekran sonuna kadar uzanır
+  filler: {
     position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: HERO_H,
-    zIndex: 0,
-  },
-  heroBg: { width: '100%', height: '100%' },
-  heroFallback: { backgroundColor: CARD, justifyContent: 'center', alignItems: 'center' },
-  heroScrim: {
-    ...StyleSheet.absoluteFillObject,
-    // Simulate gradient: transparent top → dark bottom
-    backgroundColor: 'transparent',
-    // Two-layer scrim approach
-    borderBottomWidth: 0,
-  },
-  heroBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingBottom: 24,
+    left: 0, right: 0,
+    bottom: -H,            // ekranın çok altına kadar uzanır
+    backgroundColor: T.bg0,
+    zIndex: 5,
   },
 
-  heroOverlay: {
-    width: '100%',
-    padding: 14,
+  panel: { position: 'absolute', left: 0, right: 0, zIndex: 20, backgroundColor: T.bg0 },
 
-    backgroundColor: 'rgba(10,10,12,0.75)', // 👈 şeffaf siyah
-    borderRadius: 16,
-
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-
-    // blur hissi için
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-
+  info: {
+    height: PANEL_H,
+    paddingHorizontal: 20,
+    justifyContent: 'flex-end',
+    paddingBottom: 16,
+    backgroundColor: 'rgba(7,7,10,0.88)',
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.04)',
   },
-  
-  heroTitle: {
-    fontSize: 26, fontWeight: '900', color: '#fff',
-    letterSpacing: 0.2, marginBottom: 12,
-    textShadowColor: 'rgba(0,0,0,0.9)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
-  },
-  statsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  infoTop:    { paddingTop: 10, marginBottom: 14 },
+  mangaTitle: { fontSize: 22, fontWeight: '900', color: T.ink, letterSpacing: -0.4, textAlign: 'center' },
 
-  // Scroll
-  scroll: { flex: 1, zIndex: 1 },
+  statScroll:  { paddingHorizontal: 8 },
+  statItem:    { alignItems: 'center', paddingHorizontal: 25 },
+  statNum:     { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
+  statLbl:     { fontSize: 10, fontWeight: '600', color: T.inkDim, marginTop: 2, letterSpacing: 0.3 },
+  statDivider: { width: 1, height: 32, backgroundColor: T.line, alignSelf: 'center' },
 
-  // Content card
-  card: {
-    backgroundColor: BG,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: BORDER,
-    minHeight: H,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 24,
-  },
-  dragHandle: {
-    width: 40, height: 4, backgroundColor: '#252530',
-    borderRadius: 2, alignSelf: 'center',
-    marginTop: 12, marginBottom: 2,
-  },
-  sectionRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: BORDER,
-  },
-  sectionLabel: { fontSize: 10, fontWeight: '900', color: MUTED, letterSpacing: 3 },
-  countBadge:   {
-    backgroundColor: CARD, borderWidth: 1, borderColor: BORDER,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
-  },
-  countText:    { fontSize: 11, fontWeight: '800', color: MUTED },
+  strip:       { height: BAR_H, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, backgroundColor: T.bg0, borderTopWidth: 1, borderTopColor: T.line, borderBottomWidth: 1, borderBottomColor: T.line },
+  stripLeft:   { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  stripDot:    { width: 6, height: 6, borderRadius: 3, backgroundColor: T.gold },
+  stripLabel:  { fontSize: 10, fontWeight: '900', color: T.inkDim, letterSpacing: 3.5 },
+  countTag:    { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: T.bg2, borderRadius: 8, borderWidth: 1, borderColor: T.lineHi },
+  countTagTxt: { fontSize: 11, fontWeight: '800', color: T.inkMid },
 
-  // Chapter row
-  chRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 13, paddingRight: 12,
-    borderBottomWidth: 1, borderBottomColor: BORDER,
-  },
-  chRowRead: { opacity: 0.60 },
+  scroll: { flex: 1, zIndex: 10 },
 
-  accent: {
-    width: 3, alignSelf: 'stretch', backgroundColor: 'transparent',
-    marginRight: 14, marginLeft: 18, borderRadius: 2,
-  },
-  accentDone: { backgroundColor: GREEN },
-  accentRead: { backgroundColor: BLUE + '70' },
-
-  chInfo:      { flex: 1 },
-  chTopRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  chLabel:     { fontSize: 14, fontWeight: '700', color: '#D0D0D8' },
-  chLabelDone: { color: '#4A8060' },
-  chLabelRead: { color: '#3A3A4A' },
-  chDate:      { fontSize: 11, color: MUTED, marginTop: 3 },
-
-  readBadge: {
-    backgroundColor: BLUE + '18', borderWidth: 1, borderColor: BLUE + '40',
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
-  },
-  readBadgeText: { fontSize: 9, fontWeight: '800', color: BLUE, letterSpacing: 0.8 },
-
-  progressBg:   {
-    marginTop: 7, height: 3, backgroundColor: '#1A1A20',
-    borderRadius: 2, overflow: 'hidden', flexDirection: 'row', alignItems: 'center',
-  },
-  progressFill: { height: 3, backgroundColor: AMBER, borderRadius: 2 },
-  progressPct:  { fontSize: 9, color: AMBER, marginLeft: 6 },
-
-  // Always-visible action buttons
-  rowActions:       { flexDirection: 'row', alignItems: 'center', gap: 5, marginLeft: 6 },
-  rowBtn:           {
-    width: 30, height: 30, borderRadius: 8,
-    backgroundColor: CARD, borderWidth: 1, borderColor: BORDER,
-    justifyContent: 'center', alignItems: 'center',
-  },
-  rowBtnIsRead:     { backgroundColor: '#0C1828', borderColor: BLUE + '50' },
-  rowBtnNotRead:    { backgroundColor: '#0C180E', borderColor: GREEN + '28' },
-  rowBtnDownloaded: { backgroundColor: '#0A1F12', borderColor: '#1C3A22' },
-  rowBtnDling:      { borderColor: AMBER + '55' },
-  rowBtnDelete:     { backgroundColor: '#160C0C', borderColor: RED + '20' },
-  stickyHeader: {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  zIndex: 5,
-  paddingHorizontal: 0,
-  paddingVertical: 0,
-
-},
-
+  fabWrap: { position: 'absolute', right: 22, bottom: 40, alignItems: 'center', zIndex: 30 },
+  fab:     { width: 58, height: 58, borderRadius: 18, backgroundColor: T.gold, justifyContent: 'center', alignItems: 'center', shadowColor: T.gold, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.45, shadowRadius: 16, elevation: 14 },
+  fabRing: { position: 'absolute', width: 70, height: 70, borderRadius: 22, borderWidth: 1.5, borderColor: T.gold + '35' },
+  fabPlus: { fontSize: 30, fontWeight: '300', color: T.bg0, lineHeight: 34, marginTop: -2 },
+  fabHint: { marginTop: 7, fontSize: 10, fontWeight: '700', color: T.gold + 'BB', letterSpacing: 0.5 },
 });

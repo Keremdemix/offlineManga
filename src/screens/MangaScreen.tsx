@@ -23,7 +23,7 @@ const MAX_SCALE = 4;
 
 function dist(
   t1: { pageX: number; pageY: number },
-  t2: { pageX: number; pageY: number }
+  t2: { pageX: number; pageY: number },
 ) {
   const dx = t1.pageX - t2.pageX;
   const dy = t1.pageY - t2.pageY;
@@ -31,49 +31,59 @@ function dist(
 }
 
 // ─── Single page (dumb image, no gesture logic here) ─────────────────────────
-const MangaPage: React.FC<{ imagePath: string }> = React.memo(({ imagePath }) => {
-  const [aspectRatio, setAspectRatio] = useState(1.4);
-  const uri = imagePath.startsWith('http') ? imagePath : `file://${imagePath}`;
+const MangaPage: React.FC<{ imagePath: string }> = React.memo(
+  ({ imagePath }) => {
+    const [aspectRatio, setAspectRatio] = useState(1.4);
+    const uri = imagePath.startsWith('http')
+      ? imagePath
+      : `file://${imagePath}`;
 
-  useEffect(() => {
-    Image.getSize(
-      uri,
-      (w, h) => { if (w > 0 && h > 0) setAspectRatio(w / h); },
-      () => {}
+    useEffect(() => {
+      Image.getSize(
+        uri,
+        (w, h) => {
+          if (w > 0 && h > 0) setAspectRatio(w / h);
+        },
+        () => {},
+      );
+    }, [uri]);
+
+    return (
+      <Image
+        source={{ uri }}
+        style={{
+          width: SCREEN_W,
+          height: SCREEN_W / aspectRatio,
+          backgroundColor: '#0a0a0a',
+        }}
+        resizeMode="contain"
+        fadeDuration={100}
+      />
     );
-  }, [uri]);
-
-  return (
-    <Image
-      source={{ uri }}
-      style={{ width: SCREEN_W, height: SCREEN_W / aspectRatio, backgroundColor: '#0a0a0a' }}
-      resizeMode="contain"
-      fadeDuration={100}
-    />
-  );
-});
+  },
+);
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 const MangaScreen: React.FC<Props> = ({ route }) => {
   const { mangaLink, localPages } = route.params;
-  const [pages,   setPages]   = useState<string[]>([]);
+  const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // ── Zoom state ──────────────────────────────────────────────────────────────
-  const scale      = useRef(new Animated.Value(1)).current;
+  const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
 
   // Raw refs for math (Animated.Value.__getValue() avoided intentionally)
-  const scaleRef  = useRef(1);
-  const txRef     = useRef(0);
-  const tyRef     = useRef(0);
+  const scaleRef = useRef(1);
+  const txRef = useRef(0);
+  const tyRef = useRef(0);
 
   // Pinch tracking
-  const lastDist      = useRef<number | null>(null);
-  const pinchOriginX  = useRef(0);
-  const pinchOriginY  = useRef(0);
+  const lastDist = useRef<number | null>(null);
+  const pinchOriginX = useRef(0);
+  const pinchOriginY = useRef(0);
 
   // Pan tracking (while zoomed)
   const panStartX = useRef(0);
@@ -87,7 +97,10 @@ const MangaScreen: React.FC<Props> = ({ route }) => {
   const clamp = (tx: number, ty: number, sc: number) => {
     const maxX = Math.max(0, (SCREEN_W * sc - SCREEN_W) / 2);
     // For Y we allow generous panning since content is tall
-    const maxY = Math.max(0, (SCREEN_H * sc - SCREEN_H) / 2 + SCREEN_H * (sc - 1));
+    const maxY = Math.max(
+      0,
+      (SCREEN_H * sc - SCREEN_H) / 2 + SCREEN_H * (sc - 1),
+    );
     return {
       x: Math.min(maxX, Math.max(-maxX, tx)),
       y: Math.min(maxY, Math.max(-maxY, ty)),
@@ -96,27 +109,38 @@ const MangaScreen: React.FC<Props> = ({ route }) => {
 
   const snapToNormal = () => {
     scaleRef.current = 1;
-    txRef.current    = 0;
-    tyRef.current    = 0;
+    txRef.current = 0;
+    tyRef.current = 0;
     Animated.parallel([
-      Animated.spring(scale,      { toValue: 1, useNativeDriver: true, bounciness: 4 }),
-      Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 4 }),
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }),
+      Animated.spring(scale, {
+        toValue: 1,
+        useNativeDriver: true,
+        bounciness: 4,
+      }),
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+      }),
     ]).start(() => setListScrollEnabled(true));
   };
 
   const panResponder = useRef(
     PanResponder.create({
       // Capture only multi-touch OR panning while zoomed
-      onStartShouldSetPanResponder: (e) =>
-        e.nativeEvent.touches.length === 2,
+      onStartShouldSetPanResponder: e => e.nativeEvent.touches.length === 2,
       onMoveShouldSetPanResponder: (e, g) => {
         if (e.nativeEvent.touches.length === 2) return true;
         // Capture horizontal pan while zoomed (vertical goes to FlatList)
         if (scaleRef.current > 1.05 && Math.abs(g.dx) > 4) return true;
         return false;
       },
-      onPanResponderGrant: (e) => {
+      onPanResponderGrant: e => {
         const touches = e.nativeEvent.touches;
         if (touches.length === 2) {
           lastDist.current = null;
@@ -136,29 +160,34 @@ const MangaScreen: React.FC<Props> = ({ route }) => {
           // ── PINCH ────────────────────────────────────────────────────────
           const d = dist(
             { pageX: touches[0].pageX, pageY: touches[0].pageY },
-            { pageX: touches[1].pageX, pageY: touches[1].pageY }
+            { pageX: touches[1].pageX, pageY: touches[1].pageY },
           );
 
           if (lastDist.current !== null) {
-            const factor  = d / lastDist.current;
-            const nextSc  = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scaleRef.current * factor));
+            const factor = d / lastDist.current;
+            const nextSc = Math.min(
+              MAX_SCALE,
+              Math.max(MIN_SCALE, scaleRef.current * factor),
+            );
             scaleRef.current = nextSc;
             scale.setValue(nextSc);
 
             if (nextSc <= 1.01) {
-              txRef.current = 0; tyRef.current = 0;
-              translateX.setValue(0); translateY.setValue(0);
+              txRef.current = 0;
+              tyRef.current = 0;
+              translateX.setValue(0);
+              translateY.setValue(0);
             }
             setListScrollEnabled(nextSc <= 1.01);
           }
           lastDist.current = d;
-
         } else if (scaleRef.current > 1.05) {
           // ── PAN while zoomed ─────────────────────────────────────────────
           const nx = panBaseTx.current + g.dx;
           const ny = panBaseTy.current + g.dy;
-          const c  = clamp(nx, ny, scaleRef.current);
-          txRef.current = c.x; tyRef.current = c.y;
+          const c = clamp(nx, ny, scaleRef.current);
+          txRef.current = c.x;
+          tyRef.current = c.y;
           translateX.setValue(c.x);
           translateY.setValue(c.y);
         }
@@ -172,7 +201,7 @@ const MangaScreen: React.FC<Props> = ({ route }) => {
       onPanResponderTerminate: () => {
         lastDist.current = null;
       },
-    })
+    }),
   ).current;
 
   // ── Data loading ─────────────────────────────────────────────────────────────
@@ -200,24 +229,26 @@ const MangaScreen: React.FC<Props> = ({ route }) => {
 
   const renderItem = useCallback(
     ({ item }: { item: string }) => <MangaPage imagePath={item} />,
-    []
+    [],
   );
   const keyExtractor = useCallback((_: string, i: number) => i.toString(), []);
 
   // ── Render states ─────────────────────────────────────────────────────────────
-  if (loading) return (
-    <View style={s.centered}>
-      <ActivityIndicator size="large" color="#4A90E2" />
-      <Text style={s.loadingText}>Yükleniyor...</Text>
-    </View>
-  );
+  if (loading)
+    return (
+      <View style={s.centered}>
+        <ActivityIndicator size="large" color="#4A90E2" />
+        <Text style={s.loadingText}>Yükleniyor...</Text>
+      </View>
+    );
 
-  if (error) return (
-    <View style={s.centered}>
-      <Text style={s.errorEmoji}>⚠️</Text>
-      <Text style={s.errorText}>{error}</Text>
-    </View>
-  );
+  if (error)
+    return (
+      <View style={s.centered}>
+        <Text style={s.errorEmoji}>⚠️</Text>
+        <Text style={s.errorText}>{error}</Text>
+      </View>
+    );
 
   return (
     // Outer view captures pinch gestures
@@ -269,9 +300,11 @@ const s = StyleSheet.create({
     gap: 12,
   },
   loadingText: { color: '#555', fontSize: 14 },
-  errorEmoji:  { fontSize: 40 },
-  errorText:   {
-    color: '#e74c3c', fontSize: 14,
-    textAlign: 'center', paddingHorizontal: 32,
+  errorEmoji: { fontSize: 40 },
+  errorText: {
+    color: '#e74c3c',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
 });

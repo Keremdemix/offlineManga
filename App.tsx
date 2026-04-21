@@ -1,5 +1,10 @@
 import React from 'react';
-import { StatusBar, useColorScheme, SafeAreaView, StyleSheet } from 'react-native';
+import {
+  StatusBar,
+  useColorScheme,
+  SafeAreaView,
+  StyleSheet,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 

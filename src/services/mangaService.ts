@@ -9,7 +9,7 @@ export interface DownloadResult {
 
 export async function downloadMangaChapter(
   mangaUrl: string,
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
 ): Promise<DownloadResult> {
   try {
     const response = await fetch(mangaUrl);

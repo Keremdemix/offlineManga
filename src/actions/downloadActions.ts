@@ -18,7 +18,7 @@ export const downloadChapter = async (
   mangaTitle: string,
   chapterId: string,
   link: string,
-  onProgress?: (p: DownloadProgress) => void
+  onProgress?: (p: DownloadProgress) => void,
 ): Promise<boolean> => {
   try {
     onProgress?.({
@@ -52,17 +52,17 @@ export const downloadChapter = async (
     let mangas: Manga[] = data ? JSON.parse(data) : [];
 
     mangas = mangas.map((m: Manga) => ({
-        ...m,
-        chapters: m.chapters.map((c) =>
-            c.id === chapterId
-            ? {
-                ...c,
-                pages: result.pages,
-                downloading: false,
-                downloaded: true,
-                }
-            : c
-        ),
+      ...m,
+      chapters: m.chapters.map(c =>
+        c.id === chapterId
+          ? {
+              ...c,
+              pages: result.pages,
+              downloading: false,
+              downloaded: true,
+            }
+          : c,
+      ),
     }));
 
     await AsyncStorage.setItem('localMangas', JSON.stringify(mangas));
