@@ -7,8 +7,8 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   Alert,
+  ScrollView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { extractChapterNumber } from '../utils/chapterUtils';
@@ -23,10 +23,9 @@ interface Props {
   mode: 'manga' | 'chapter';
   onSave: () => void;
   onCancel: () => void;
-  mangaTitle?: string; // 🔥 DIŞARIDAN GELEN MANGA
+  mangaTitle?: string;
 }
 
-const BG = '#0A0A0C';
 const SURFACE = '#111114';
 const CARD = '#17171B';
 const BORDER = '#1E1E24';
@@ -46,10 +45,13 @@ const AddMangaModal: React.FC<Props> = ({
   const [mangas, setMangas] = useState<Manga[]>([]);
   const [search, setSearch] = useState('');
   const [selectedManga, setSelectedManga] = useState('');
+
   const [newTitle, setNewTitle] = useState('');
   const [cover, setCover] = useState('');
-  const [chapterLink, setChapterLink] = useState('');
-  const [showList, setShowList] = useState(false);
+
+  const [chapterLinks, setChapterLinks] = useState<string[]>(['']);
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
 
   useEffect(() => {
     if (!visible) return;
@@ -59,12 +61,13 @@ const AddMangaModal: React.FC<Props> = ({
   }, [visible]);
 
   const reset = () => {
-    setSelectedManga('');
     setNewTitle('');
     setCover('');
-    setChapterLink('');
+    setChapterLinks(['']);
+    setRangeStart('');
+    setRangeEnd('');
     setSearch('');
-    setShowList(false);
+    setSelectedManga('');
   };
 
   const handleClose = () => {
@@ -86,8 +89,9 @@ const AddMangaModal: React.FC<Props> = ({
     const exists = stored.some(
       m => m.title.toLowerCase() === trimmed.toLowerCase(),
     );
+
     if (exists) {
-      Alert.alert('Zaten var', `"${trimmed}" zaten mevcut.`);
+      Alert.alert('Zaten var', 'Bu manga zaten mevcut.');
       return;
     }
 
@@ -98,22 +102,17 @@ const AddMangaModal: React.FC<Props> = ({
     } as any);
 
     await AsyncStorage.setItem('localMangas', JSON.stringify(stored));
+
     reset();
     onSave();
   };
 
   // ───────── CHAPTER EKLE ─────────
   const handleSaveChapter = async () => {
-    const trimmedLink = chapterLink.trim();
     const targetManga = mangaTitle || selectedManga;
 
     if (!targetManga) {
-      Alert.alert('Hata', 'Manga bulunamadı.');
-      return;
-    }
-
-    if (!trimmedLink) {
-      Alert.alert('Hata', 'Link boş olamaz.');
+      Alert.alert('Hata', 'Lütfen bir manga seç.');
       return;
     }
 
@@ -121,39 +120,56 @@ const AddMangaModal: React.FC<Props> = ({
     let stored: any[] = data ? JSON.parse(data) : [];
 
     const mangaIdx = stored.findIndex((m: any) => m.title === targetManga);
-    if (mangaIdx === -1) {
-      Alert.alert('Hata', 'Manga bulunamadı.');
-      return;
+    if (mangaIdx === -1) return;
+
+    let chapters = stored[mangaIdx].chapters || [];
+
+    // 🔥 MULTI LINK
+    for (let link of chapterLinks) {
+      const trimmed = link.trim();
+      if (!trimmed) continue;
+
+      const exists = chapters.find((c: any) => c.link === trimmed);
+      if (exists) continue;
+
+      chapters.unshift({
+        id: Date.now().toString() + Math.random(),
+        link: trimmed,
+        chapterNumber: extractChapterNumber(trimmed),
+        date: new Date().toISOString(),
+        pages: [],
+        downloaded: false,
+        read: false,
+      });
     }
 
-    const chapters: any[] = stored[mangaIdx].chapters || [];
+    // 🔥 RANGE
+    if (rangeStart && rangeEnd && chapterLinks[0]) {
+      const baseLink = chapterLinks[0];
+      const start = Number(rangeStart);
+      const end = Number(rangeEnd);
 
-    // duplicate link
-    const duplicate = chapters.find(
-      (c: any) => c.link?.toLowerCase() === trimmedLink.toLowerCase(),
-    );
-    if (duplicate) {
-      Alert.alert('Zaten var', 'Bu bölüm zaten ekli.');
-      return;
+      if (!isNaN(start) && !isNaN(end) && start <= end) {
+        for (let i = start; i <= end; i++) {
+          const newLink = baseLink.replace(/\d+\/?$/, `${i}/`);
+
+          const exists = chapters.find((c: any) => c.link === newLink);
+          if (exists) continue;
+
+          chapters.unshift({
+            id: Date.now().toString() + i,
+            link: newLink,
+            chapterNumber: i,
+            date: new Date().toISOString(),
+            pages: [],
+            downloaded: false,
+            read: false,
+          });
+        }
+      }
     }
 
-    const chapterNum = extractChapterNumber(trimmedLink);
-
-    const newChapter = {
-      id: Date.now().toString(),
-      link: trimmedLink,
-      chapterNumber: chapterNum ?? null,
-      date: new Date().toISOString(),
-      pages: [],
-      downloaded: false,
-      read: false,
-    };
-
-    stored[mangaIdx].chapters = [
-      newChapter,
-      ...(stored[mangaIdx].chapters || []),
-    ];
-
+    stored[mangaIdx].chapters = chapters;
     await AsyncStorage.setItem('localMangas', JSON.stringify(stored));
 
     reset();
@@ -172,7 +188,7 @@ const AddMangaModal: React.FC<Props> = ({
             {mode === 'manga' ? '📚 Manga Ekle' : '📄 Bölüm Ekle'}
           </Text>
 
-          {/* ─── MANGA MODE ─── */}
+          {/* ───────── MANGA MODE ───────── */}
           {mode === 'manga' && (
             <>
               <TextInput
@@ -182,6 +198,7 @@ const AddMangaModal: React.FC<Props> = ({
                 value={newTitle}
                 onChangeText={setNewTitle}
               />
+
               <TextInput
                 placeholder="Kapak URL"
                 placeholderTextColor={MUTED}
@@ -189,16 +206,17 @@ const AddMangaModal: React.FC<Props> = ({
                 value={cover}
                 onChangeText={setCover}
               />
+
               <TouchableOpacity style={st.btnBlue} onPress={handleSaveManga}>
                 <Text style={st.btnText}>Kaydet</Text>
               </TouchableOpacity>
             </>
           )}
 
-          {/* ─── CHAPTER MODE ─── */}
+          {/* ───────── CHAPTER MODE ───────── */}
           {mode === 'chapter' && (
-            <>
-              {/* 🔥 SADECE HOME SCREEN'DE GÖZÜKÜR */}
+            <ScrollView>
+              {/* 🔥 MANGA SEÇİM */}
               {!mangaTitle && (
                 <>
                   <TextInput
@@ -214,25 +232,69 @@ const AddMangaModal: React.FC<Props> = ({
                       key={item}
                       onPress={() => setSelectedManga(item)}
                     >
-                      <Text style={{ color: TEXT, padding: 6 }}>{item}</Text>
+                      <Text
+                        style={{
+                          color: selectedManga === item ? AMBER : TEXT,
+                          padding: 6,
+                          fontWeight: selectedManga === item ? '800' : '400',
+                        }}
+                      >
+                        {item}
+                      </Text>
                     </TouchableOpacity>
                   ))}
                 </>
               )}
 
-              {/* 🔥 CHAPTER SCREEN'DE SADECE BU VAR */}
-              <TextInput
-                placeholder="Bölüm linki"
-                placeholderTextColor={MUTED}
-                style={st.input}
-                value={chapterLink}
-                onChangeText={setChapterLink}
-              />
+              {/* 🔥 MULTI LINK */}
+              {chapterLinks.map((link, i) => (
+                <TextInput
+                  key={i}
+                  placeholder={`Bölüm linki ${i + 1}`}
+                  placeholderTextColor={MUTED}
+                  style={st.input}
+                  value={link}
+                  onChangeText={text => {
+                    const arr = [...chapterLinks];
+                    arr[i] = text;
+                    setChapterLinks(arr);
+                  }}
+                />
+              ))}
+
+              <TouchableOpacity
+                onPress={() => setChapterLinks([...chapterLinks, ''])}
+              >
+                <Text style={st.addMore}>+ Yeni link ekle</Text>
+              </TouchableOpacity>
+
+              {/* 🔥 RANGE */}
+              <Text style={st.rangeTitle}>Toplu ekleme</Text>
+
+              <View style={st.row}>
+                <TextInput
+                  placeholder="Başlangıç"
+                  placeholderTextColor={MUTED}
+                  style={[st.input, { flex: 1 }]}
+                  keyboardType="numeric"
+                  value={rangeStart}
+                  onChangeText={setRangeStart}
+                />
+
+                <TextInput
+                  placeholder="Bitiş"
+                  placeholderTextColor={MUTED}
+                  style={[st.input, { flex: 1 }]}
+                  keyboardType="numeric"
+                  value={rangeEnd}
+                  onChangeText={setRangeEnd}
+                />
+              </View>
 
               <TouchableOpacity style={st.btnAmber} onPress={handleSaveChapter}>
                 <Text style={st.btnTextDark}>Ekle</Text>
               </TouchableOpacity>
-            </>
+            </ScrollView>
           )}
 
           <TouchableOpacity onPress={handleClose}>
@@ -255,6 +317,7 @@ const st = StyleSheet.create({
   },
   modal: {
     width: '90%',
+    maxHeight: '85%',
     backgroundColor: SURFACE,
     padding: 20,
     borderRadius: 16,
@@ -290,6 +353,24 @@ const st = StyleSheet.create({
   },
   btnText: { color: '#fff', fontWeight: '800' },
   btnTextDark: { color: '#000', fontWeight: '800' },
+
+  addMore: {
+    color: AMBER,
+    marginTop: 8,
+    fontWeight: '700',
+  },
+
+  rangeTitle: {
+    color: TEXT,
+    marginTop: 16,
+    fontWeight: '700',
+  },
+
+  row: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
   close: {
     color: RED,
     textAlign: 'center',

@@ -1,19 +1,28 @@
-export function extractChapterNumber(html: string): number | null {
-  if (!html) return null;
+export function extractChapterNumber(input: string): number | null {
+  if (!input) return null;
 
-  // 1. normal pattern
-  const patterns = [
-    /chapter\s*[-:.]?\s*(\d+(?:\.\d+)?)/i,
-    /episode\s*[-:.]?\s*(\d+(?:\.\d+)?)/i,
-    /ch\s*[-:.]?\s*(\d+(?:\.\d+)?)/i,
-  ];
+  // 1) öncelik: explicit chapter patterns
+  const explicit = input.match(
+    /(?:bolum|bölüm|chapter|episode|ch)[-\/]?\s*(\d+(?:\.\d+)?)/i
+  );
 
-  for (const p of patterns) {
-    const m = html.match(p);
-    if (m) return Number(m[1]);
+  if (explicit?.[1]) {
+    return Number(explicit[1]);
   }
 
-  // 2. fallback: ilk sayı
-  const fallback = html.match(/\d+(?:\.\d+)?/);
-  return fallback ? Number(fallback[0]) : null;
+  // 2) fallback: URL'nin SON numeric segmenti
+  // örnek: .../845-bolum  veya .../10419/845
+  const segments = input
+    .split('/')
+    .filter(Boolean)
+    .reverse();
+
+  for (const seg of segments) {
+    const match = seg.match(/(\d+(?:\.\d+)?)/);
+    if (match) {
+      return Number(match[1]);
+    }
+  }
+
+  return null;
 }
