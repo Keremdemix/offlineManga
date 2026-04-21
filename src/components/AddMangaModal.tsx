@@ -168,7 +168,6 @@ const AddMangaModal: React.FC<Props> = ({
     <Modal visible={visible} transparent animationType="slide">
       <View style={st.overlay}>
         <View style={st.modal}>
-
           <Text style={st.title}>
             {mode === 'manga' ? '📚 Manga Ekle' : '📄 Bölüm Ekle'}
           </Text>
@@ -215,9 +214,7 @@ const AddMangaModal: React.FC<Props> = ({
                       key={item}
                       onPress={() => setSelectedManga(item)}
                     >
-                      <Text style={{ color: TEXT, padding: 6 }}>
-                        {item}
-                      </Text>
+                      <Text style={{ color: TEXT, padding: 6 }}>{item}</Text>
                     </TouchableOpacity>
                   ))}
                 </>
@@ -241,7 +238,6 @@ const AddMangaModal: React.FC<Props> = ({
           <TouchableOpacity onPress={handleClose}>
             <Text style={st.close}>Kapat</Text>
           </TouchableOpacity>
-
         </View>
       </View>
     </Modal>
