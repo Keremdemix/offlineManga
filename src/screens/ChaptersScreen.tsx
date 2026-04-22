@@ -62,11 +62,7 @@ const COVER_H = Math.round(H * 0.58);
 const PANEL_H = 130;
 const BAR_H = 46;
 const STICK_AT = COVER_H - SB_H;
-
-// Panelin başlangıç top'u: kapağın hemen altı
 const PANEL_TOP = COVER_H;
-// Panel scroll sonunda nerede durur: SB_H
-// Yani pan translateY = 0 → PANEL_TOP pozisyonda, max → -(PANEL_TOP - SB_H)
 const PANEL_TRAVEL = PANEL_TOP;
 
 // ─── AddChapterModal ──────────────────────────────────────────────────────────
@@ -75,7 +71,6 @@ interface AddChapterModalProps {
   onClose: () => void;
   onAdd: (links: string[], start?: number, end?: number) => void;
 }
-
 const AddChapterModal: React.FC<AddChapterModalProps> = ({
   visible,
   onClose,
@@ -86,19 +81,16 @@ const AddChapterModal: React.FC<AddChapterModalProps> = ({
   const [end, setEnd] = useState('');
 
   const handleAdd = () => {
-    const cleanLinks = links.map(l => l.trim()).filter(Boolean);
-
-    if (!cleanLinks.length) {
+    const clean = links.map(l => l.trim()).filter(Boolean);
+    if (!clean.length) {
       Alert.alert('Hata', 'En az 1 link gir.');
       return;
     }
-
     onAdd(
-      cleanLinks,
+      clean,
       start ? Number(start) : undefined,
       end ? Number(end) : undefined,
     );
-
     setLinks(['']);
     setStart('');
     setEnd('');
@@ -106,108 +98,89 @@ const AddChapterModal: React.FC<AddChapterModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
-        style={m.overlay}
+        style={md.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={m.sheet}>
-          <Text style={m.sheetTitle}>Bölüm Ekle</Text>
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          activeOpacity={1}
+        />
+        <View style={md.sheet}>
+          <View style={md.handle} />
+          <Text style={md.title}>Bölüm Ekle</Text>
 
-          {/* 🔥 MULTI LINK */}
           {links.map((l, i) => (
-            <View
-              key={i}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 10,
-                marginTop: 6
-              }}
-            >
+            <View key={i} style={md.linkRow}>
               <TextInput
-                style={[m.input, { flex: 1, marginTop: 0 }]}
+                style={[md.input, { flex: 1, marginTop: 0 }]}
                 value={l}
                 onChangeText={t => {
-                  const arr = [...links];
-                  arr[i] = t;
-                  setLinks(arr);
+                  const a = [...links];
+                  a[i] = t;
+                  setLinks(a);
                 }}
                 placeholder={`Link ${i + 1}`}
                 placeholderTextColor={T.inkMid}
+                autoCapitalize="none"
+                autoCorrect={false}
               />
-
-              {/* 🔥 SADECE 2. VE SONRASI SİLİNEBİLİR */}
               {i > 0 && (
                 <TouchableOpacity
-                  onPress={() => {
-                    setLinks(links.filter((_, idx) => idx !== i));
-                  }}
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 10,
-                    backgroundColor: T.redDim,
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    borderWidth: 1,
-                    borderColor: T.red + '30'
-                  }}
+                  style={md.removeBtn}
+                  onPress={() => setLinks(links.filter((_, idx) => idx !== i))}
                 >
-                  <Text style={{
-                    color: T.red,
-                    fontWeight: '800',
-                    fontSize: 16
-                  }}>
-                    ✕
-                  </Text>
+                  <Text style={md.removeTxt}>✕</Text>
                 </TouchableOpacity>
               )}
             </View>
           ))}
 
           <TouchableOpacity onPress={() => setLinks([...links, ''])}>
-            <Text style={{
-              color: T.gold,
-              marginTop: 12,
-              fontSize: 14,
-              fontWeight: '700'
-            }}>
-              + link ekle
-            </Text>
+            <Text style={md.addLink}>+ link ekle</Text>
           </TouchableOpacity>
 
-          {/* 🔥 RANGE */}
-          <Text style={{ color: T.ink, marginTop: 16 }}>
-            Toplu ekleme (opsiyonel)
-          </Text>
-
-          <View style={{ flexDirection: 'row', gap: 10 }}>
+          <Text style={md.rangeLabel}>Toplu ekleme (opsiyonel)</Text>
+          <View style={md.rangeRow}>
             <TextInput
-              style={[m.input, { flex: 1 }]}
+              style={[md.input, { flex: 1, marginTop: 0 }]}
               placeholder="Başlangıç"
               keyboardType="numeric"
               value={start}
               onChangeText={setStart}
-              placeholderTextColor={T.inkDim}
+              placeholderTextColor={T.inkMid}
             />
             <TextInput
-              style={[m.input, { flex: 1 }]}
+              style={[md.input, { flex: 1, marginTop: 0 }]}
               placeholder="Bitiş"
               keyboardType="numeric"
               value={end}
               onChangeText={setEnd}
-              placeholderTextColor={T.inkDim}
+              placeholderTextColor={T.inkMid}
             />
           </View>
 
-          <View style={m.btnRow}>
-            <TouchableOpacity style={m.btnCancel} onPress={onClose}>
-              <Text style={m.btnCancelText}>İptal</Text>
+          <View style={md.btnRow}>
+            <TouchableOpacity
+              style={md.btnCancel}
+              onPress={onClose}
+              activeOpacity={0.7}
+            >
+              <Text style={md.btnCancelTxt}>İptal</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity style={m.btnAdd} onPress={handleAdd}>
-              <Text style={m.btnAddText}>Ekle</Text>
+            <TouchableOpacity
+              style={md.btnAdd}
+              onPress={handleAdd}
+              activeOpacity={0.8}
+            >
+              <Text style={md.btnAddTxt}>Ekle</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -215,7 +188,7 @@ const AddChapterModal: React.FC<AddChapterModalProps> = ({
     </Modal>
   );
 };
-const m = StyleSheet.create({
+const md = StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -237,41 +210,40 @@ const m = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: T.lineHi,
     alignSelf: 'center',
-    marginBottom: 24,
-  },
-  sheetTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: T.ink,
-    marginBottom: 4,
-  },
-  sheetSub: { fontSize: 13, color: T.inkMid, marginBottom: 24 },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: T.bg2,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: T.lineHi,
-    paddingHorizontal: 14,
     marginBottom: 20,
   },
-  inputIcon: { fontSize: 16, marginRight: 10 },
+  title: { fontSize: 20, fontWeight: '800', color: T.ink, marginBottom: 12 },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
   input: {
-    flex: 1,
-    height: 52,
-    fontSize: 16,
+    height: 50,
+    fontSize: 15,
     color: T.ink,
-
     backgroundColor: T.bg3,
     borderRadius: 12,
     paddingHorizontal: 16,
-    marginTop: 10,
-
     borderWidth: 1,
     borderColor: T.lineHi,
   },
-  btnRow: { flexDirection: 'row', gap: 12,marginTop: 20 },
+  removeBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: T.redDim,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: T.red + '30',
+  },
+  removeTxt: { color: T.red, fontWeight: '800', fontSize: 16 },
+  addLink: { color: T.gold, fontSize: 14, fontWeight: '700', marginBottom: 16 },
+  rangeLabel: { color: T.ink, fontSize: 13, marginBottom: 8 },
+  rangeRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
+  btnRow: { flexDirection: 'row', gap: 12, marginTop: 20 },
   btnCancel: {
     flex: 1,
     height: 50,
@@ -282,7 +254,7 @@ const m = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  btnCancelText: { fontSize: 15, fontWeight: '700', color: T.inkMid },
+  btnCancelTxt: { fontSize: 15, fontWeight: '700', color: T.inkMid },
   btnAdd: {
     flex: 2,
     height: 50,
@@ -291,7 +263,88 @@ const m = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  btnAddText: { fontSize: 15, fontWeight: '800', color: T.bg0 },
+  btnAddTxt: { fontSize: 15, fontWeight: '800', color: T.bg0 },
+});
+
+// ─── SelectionBar ─────────────────────────────────────────────────────────────
+interface SelectionBarProps {
+  count: number;
+  onCancel: () => void;
+  onDownloadSelected: () => void;
+  onDeleteSelected: () => void;
+  onMarkReadSelected: () => void;
+}
+const SelectionBar: React.FC<SelectionBarProps> = ({
+  count,
+  onCancel,
+  onDownloadSelected,
+  onDeleteSelected,
+  onMarkReadSelected,
+}) => (
+  <View style={sb.bar}>
+    <TouchableOpacity style={sb.cancelBtn} onPress={onCancel}>
+      <Text style={sb.cancelTxt}>✕</Text>
+    </TouchableOpacity>
+    <Text style={sb.count}>{count} seçili</Text>
+    <View style={sb.actions}>
+      <TouchableOpacity style={sb.actionBtn} onPress={onMarkReadSelected}>
+        <Text style={sb.actionTxt}>✦</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[sb.actionBtn, sb.actionDl]}
+        onPress={onDownloadSelected}
+      >
+        <Text style={sb.actionTxt}>↓</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[sb.actionBtn, sb.actionDel]}
+        onPress={onDeleteSelected}
+      >
+        <Text style={[sb.actionTxt, { color: T.red }]}>🗑</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+);
+const sb = StyleSheet.create({
+  bar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    gap: 12,
+    backgroundColor: T.gold,
+    borderBottomWidth: 1,
+    borderBottomColor: T.lineHi,
+  },
+  cancelBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: T.bg3,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelTxt: { color: T.inkMid, fontSize: 13, fontWeight: '800' },
+  count: { flex: 1, fontSize: 15, fontWeight: '700', color: T.ink },
+  actions: { flexDirection: 'row', gap: 8 },
+  actionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 9,
+    backgroundColor: T.bg3,
+    borderWidth: 1,
+    borderColor: T.lineHi,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionDl: { backgroundColor: T.tealDim, borderColor: T.teal + '40' },
+  actionDel: { backgroundColor: T.redDim, borderColor: T.red + '20' },
+  actionTxt: { fontSize: 16, color: T.ink },
 });
 
 // ─── ChapterRow ───────────────────────────────────────────────────────────────
@@ -300,43 +353,71 @@ interface RowProps {
   index: number;
   total: number;
   progress: DownloadProgress | undefined;
+  selectMode: boolean;
+  selected: boolean;
   onOpen: () => void;
   onDownload: () => void;
   onDelete: () => void;
   onToggleRead: () => void;
-  onLongPress?: () => void;
-  onSelect?: () => void;
-  selectMode?: boolean;
-  selected?: boolean;
+  onLongPress: () => void;
+  onSelectToggle: () => void;
 }
 const ChapterRow: React.FC<RowProps> = ({
   item,
   index,
   total,
   progress,
+  selectMode,
+  selected,
   onOpen,
   onDownload,
   onDelete,
   onToggleRead,
+  onLongPress,
+  onSelectToggle,
 }) => {
   const isDling = progress?.status === 'downloading';
   const pct =
     isDling && (progress?.total ?? 0) > 0
-      ? Math.round(((progress?.current ?? 0) / progress!.total!) * 100)
+      ? Math.round(((progress.current ?? 0) / progress.total!) * 100)
       : 0;
   const num = item.chapterNumber != null ? item.chapterNumber : total - index;
   const accentColor = item.read
     ? T.violet
     : item.downloaded
     ? T.teal
-    : T.inkDim;
+    : T.inkMid;
+
+  const handlePress = () => {
+    if (selectMode) {
+      onSelectToggle();
+    } else {
+      onOpen();
+    }
+  };
 
   return (
     <TouchableOpacity
-      style={[r.row, item.read && r.rowRead]}
-      onPress={onOpen}
+      style={[r.row, item.read && r.rowRead, selected && r.rowSelected]}
+      onPress={handlePress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       activeOpacity={0.65}
     >
+      {/* Seçim checkbox'ı */}
+      {selectMode && (
+        <TouchableOpacity
+          style={r.checkWrap}
+          onPress={onSelectToggle}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <View style={[r.check, selected && r.checkSelected]}>
+            {selected && <Text style={r.checkMark}>✓</Text>}
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* Numara */}
       <View style={r.numSide}>
         <Text style={[r.bigNum, { color: accentColor }]}>
           {String(num).padStart(2, '0')}
@@ -347,6 +428,8 @@ const ChapterRow: React.FC<RowProps> = ({
           />
         )}
       </View>
+
+      {/* İçerik */}
       <View style={r.content}>
         <View style={r.topRow}>
           <Text
@@ -383,63 +466,73 @@ const ChapterRow: React.FC<RowProps> = ({
           </View>
         )}
       </View>
-      <View style={r.actions}>
-        <TouchableOpacity
-          style={[r.ico, item.read && r.icoActive]}
-          onPress={onToggleRead}
-          hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-        >
-          <Text
-            style={{ fontSize: 14, color: item.read ? T.violet : T.inkDim }}
+
+      {/* Aksiyonlar — select modda gizlenir */}
+      {!selectMode && (
+        <View style={r.actions}>
+          <TouchableOpacity
+            style={[r.ico, item.read && r.icoActive]}
+            onPress={onToggleRead}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
           >
-            {item.read ? '✦' : '✧'}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[r.ico, item.downloaded && r.icoGreen, isDling && r.icoAmber]}
-          onPress={() => {
-            if (item.downloaded) {
-              Alert.alert(
-                'Tekrar İndir?',
-                'Bu bölümü yeniden indirmek istiyor musun?',
-                [
-                  { text: 'İptal', style: 'cancel' },
-                  { text: 'İndir', onPress: onDownload },
-                ],
-              );
-            } else {
-              onDownload();
-            }
-          }}
-          disabled={isDling}
-          hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-        >
-          {isDling ? (
-            <ActivityIndicator size="small" color={T.gold} />
-          ) : (
+            <Text style={{ fontSize: 14, color: item.read ? T.ink : T.ink }}>
+              {item.read ? '✦' : '✧'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              r.ico,
+              item.downloaded && r.icoGreen,
+              isDling && r.icoAmber,
+            ]}
+            onPress={() => {
+              if (item.downloaded) {
+                Alert.alert(
+                  'Tekrar İndir?',
+                  'Bu bölümü yeniden indirmek istiyor musun?',
+                  [
+                    { text: 'İptal', style: 'cancel' },
+                    { text: 'İndir', onPress: onDownload },
+                  ],
+                );
+              } else {
+                onDownload();
+              }
+            }}
+            disabled={isDling}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
+            {isDling ? (
+              <ActivityIndicator size="small" color={T.gold} />
+            ) : (
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: '800',
+                  color: item.downloaded ? T.teal : T.inkMid,
+                }}
+              >
+                {item.downloaded ? '✓' : '↓'}
+              </Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[r.ico, r.icoDel]}
+            onPress={onDelete}
+            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+          >
             <Text
               style={{
-                fontSize: 15,
-                fontWeight: '800',
-                color: item.downloaded ? T.teal : T.inkDim,
+                fontSize: 11,
+                fontWeight: '900',
+                color: T.redDim + 'CC',
               }}
             >
-              {item.downloaded ? '✓' : '↓'}
+              ✕
             </Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[r.ico, r.icoDel]}
-          onPress={onDelete}
-          hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-        >
-          <Text
-            style={{ fontSize: 11, fontWeight: '900', color: T.redDim + 'CC' }}
-          >
-            ✕
-          </Text>
-        </TouchableOpacity>
-      </View>
+          </TouchableOpacity>
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
@@ -451,7 +544,28 @@ const r = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: T.bg0,
   },
-  rowRead: { opacity: 0.48 },
+  rowRead: { opacity: 0.78 },
+  rowSelected: { backgroundColor: T.bg2 },
+
+  checkWrap: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingLeft: 16,
+    paddingRight: 4,
+    paddingTop: 2,
+  },
+  check: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: T.inkMid,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkSelected: { backgroundColor: T.gold, borderColor: T.gold },
+  checkMark: { fontSize: 11, fontWeight: '900', color: T.bg0 },
+
   numSide: { width: 68, alignItems: 'center', paddingTop: 2 },
   bigNum: {
     fontSize: 22,
@@ -460,6 +574,7 @@ const r = StyleSheet.create({
     lineHeight: 26,
   },
   connector: { width: 1.5, flex: 1, marginTop: 6, minHeight: 20 },
+
   content: { flex: 1, paddingRight: 10 },
   topRow: {
     flexDirection: 'row',
@@ -474,8 +589,8 @@ const r = StyleSheet.create({
     color: T.ink,
     letterSpacing: -0.2,
   },
-  chTitleRead: { color: T.inkDim },
-  date: { fontSize: 11, color: T.inkDim },
+  chTitleRead: { color: T.inkMid },
+  date: { fontSize: 11, color: T.ink },
   pill: {
     paddingHorizontal: 7,
     paddingVertical: 2,
@@ -493,6 +608,7 @@ const r = StyleSheet.create({
   },
   progBar: { height: 2.5, backgroundColor: T.gold, borderRadius: 2 },
   progNum: { fontSize: 10, fontWeight: '700', color: T.gold, minWidth: 30 },
+
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -518,6 +634,7 @@ const r = StyleSheet.create({
 // ─── ChaptersScreen ───────────────────────────────────────────────────────────
 const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const { mangaTitle } = route.params;
+
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -527,10 +644,10 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const [addVisible, setAddVisible] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
   const activeDownloads = useRef<Set<string>>(new Set());
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Kapak: parallax + fade
   const coverOp = scrollY.interpolate({
     inputRange: [0, STICK_AT],
     outputRange: [1, 0.18],
@@ -546,21 +663,11 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
     outputRange: [1.06, 1],
     extrapolate: 'clamp',
   });
-
-  // Panel: başlangıçta PANEL_TOP'ta, scroll sonunda SB_H'de sabitlenir
   const panelTY = scrollY.interpolate({
     inputRange: [0, STICK_AT],
     outputRange: [0, -PANEL_TRAVEL],
     extrapolate: 'clamp',
   });
-
-  // Panel'in ALTINDA kalan boşluğu kapatmak için siyah dolgu bloğu.
-  // Bu blok panel ile aynı translateY'i kullanır, panel'in hemen altında durur
-  // ve ekranın en altına kadar uzanır → kapak hiç görünmez.
-  // Yüksekliği: H yeter (liste zaten üstünde olduğu için görünmez)
-  const fillerTY = panelTY; // aynı animasyon
-
-  // FAB
   const fabScale = scrollY.interpolate({
     inputRange: [0, 80, 160],
     outputRange: [1, 0.75, 0],
@@ -572,6 +679,28 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
     extrapolate: 'clamp',
   });
 
+  // ── Select helpers ──────────────────────────────────────────────────────────
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const enterSelectMode = (id: string) => {
+    setSelectMode(true);
+    setSelected(new Set([id]));
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
+  const selectedChapters = chapters.filter(c => selected.has(c.id));
+
+  // ── Data ────────────────────────────────────────────────────────────────────
   const loadChapters = useCallback(async () => {
     try {
       const raw = await AsyncStorage.getItem('localMangas');
@@ -624,93 +753,66 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       const raw = await AsyncStorage.getItem('localMangas');
       if (!raw) return;
-
       const list = JSON.parse(raw);
       const idx = list.findIndex((m: any) => m.title === mangaTitle);
       if (idx === -1) return;
-
-      let chapters = list[idx].chapters || [];
-
-      // 🔥 1. NORMAL LINKLER
-      for (let link of links) {
-        const num = extractChapterNumber(link);
-
-        const exists = chapters.find((c: any) => c.link === link);
-        if (exists) continue;
-
-        chapters.unshift({
-          id: Date.now().toString() + Math.random(),
+      let chs = list[idx].chapters || [];
+      for (const link of links) {
+        if (chs.find((c: any) => c.link === link)) continue;
+        chs.unshift({
+          id: `${Date.now()}${Math.random()}`,
           link,
           date: new Date().toISOString(),
-          chapterNumber: num ?? undefined,
+          chapterNumber: extractChapterNumber(link) ?? undefined,
         });
       }
-
-      // 🔥 2. RANGE
       if (start && end && links[0]) {
-        const base = links[0];
-
         for (let i = start; i <= end; i++) {
-          const newLink = base.replace(/\d+\/?$/, `${i}/`);
-
-          const exists = chapters.find((c: any) => c.link === newLink);
-          if (exists) continue;
-
-          chapters.unshift({
-            id: Date.now().toString() + i,
-            link: newLink,
+          const nl = links[0].replace(/\d+\/?$/, `${i}/`);
+          if (chs.find((c: any) => c.link === nl)) continue;
+          chs.unshift({
+            id: `${Date.now()}${i}`,
+            link: nl,
             date: new Date().toISOString(),
             chapterNumber: i,
           });
         }
       }
-
-      list[idx].chapters = chapters;
-
+      list[idx].chapters = chs;
       await AsyncStorage.setItem('localMangas', JSON.stringify(list));
-
       loadChapters();
-    } catch (e) {
+    } catch {
       Alert.alert('Hata', 'Eklenemedi');
     }
   };
 
-  const markChapterDownloaded = async (chapterId: string) => {
+  const markDownloaded = async (id: string) => {
     const raw = await AsyncStorage.getItem('localMangas');
     if (!raw) return;
-
     const list = JSON.parse(raw);
-
     const idx = list.findIndex((m: any) => m.title === mangaTitle);
     if (idx === -1) return;
-
     list[idx].chapters = list[idx].chapters.map((c: any) =>
-      c.id === chapterId ? { ...c, downloaded: true } : c,
+      c.id === id ? { ...c, downloaded: true } : c,
     );
-
     await AsyncStorage.setItem('localMangas', JSON.stringify(list));
   };
-  
+
   const handleDownload = async (ch: Chapter) => {
-  if (activeDownloads.current.has(ch.id)) return;
-  activeDownloads.current.add(ch.id);
-
-  await downloadChapter(mangaTitle, ch.id, ch.link, async p => {
-    setProgresses(prev => ({ ...prev, [ch.id]: p }));
-
-    if (p.status === 'done') {
-      activeDownloads.current.delete(ch.id);
-
-      await markChapterDownloaded(ch.id);
-
-      loadChapters();
-    }
-
-    if (p.status === 'error') {
-      activeDownloads.current.delete(ch.id);
-    }
-  });
-};
+    if (activeDownloads.current.has(ch.id)) return;
+    activeDownloads.current.add(ch.id);
+    await downloadChapter(mangaTitle, ch.id, ch.link, async p => {
+      setProgresses(prev => ({ ...prev, [ch.id]: p }));
+      if (p.status === 'done') {
+        activeDownloads.current.delete(ch.id);
+        await markDownloaded(ch.id);
+        loadChapters();
+      }
+      if (p.status === 'error') {
+        activeDownloads.current.delete(ch.id);
+      }
+    });
+  };
 
   const openChapter = (ch: Chapter) => {
     if (ch.downloaded && ch.pages?.length)
@@ -759,16 +861,56 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleDownloadAll = async () => {
-    const notDownloaded = chapters.filter(c => !c.downloaded);
-
-    if (!notDownloaded.length) {
+    const notDl = chapters.filter(c => !c.downloaded);
+    if (!notDl.length) {
       Alert.alert('Bilgi', 'Tüm bölümler zaten indirilmiş.');
       return;
     }
+    for (const ch of notDl) await handleDownload(ch);
+  };
 
-    for (const ch of notDownloaded) {
-      await handleDownload(ch);
-    }
+  // ── Toplu işlemler ──────────────────────────────────────────────────────────
+  const handleDownloadSelected = async () => {
+    for (const ch of selectedChapters) await handleDownload(ch);
+    exitSelectMode();
+  };
+
+  const handleDeleteSelected = () => {
+    Alert.alert('Sil', `${selected.size} bölüm silinsin mi?`, [
+      { text: 'İptal', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          const raw = await AsyncStorage.getItem('localMangas');
+          if (!raw) return;
+          const list = JSON.parse(raw);
+          const idx = list.findIndex((m: any) => m.title === mangaTitle);
+          if (idx === -1) return;
+          list[idx].chapters = list[idx].chapters.filter(
+            (c: any) => !selected.has(c.id),
+          );
+          await AsyncStorage.setItem('localMangas', JSON.stringify(list));
+          exitSelectMode();
+          loadChapters();
+        },
+      },
+    ]);
+  };
+
+  const handleMarkReadSelected = async () => {
+    const raw = await AsyncStorage.getItem('localMangas');
+    if (!raw) return;
+    const list = JSON.parse(raw);
+    const idx = list.findIndex((m: any) => m.title === mangaTitle);
+    if (idx === -1) return;
+    const allRead = selectedChapters.every(c => c.read);
+    list[idx].chapters = list[idx].chapters.map((c: any) =>
+      selected.has(c.id) ? { ...c, read: !allRead } : c,
+    );
+    await AsyncStorage.setItem('localMangas', JSON.stringify(list));
+    exitSelectMode();
+    loadChapters();
   };
 
   if (loading)
@@ -790,7 +932,7 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
         barStyle="light-content"
       />
 
-      {/* ── KAPAK ─────────────────────────────────────────────────────────── */}
+      {/* ── Kapak ─────────────────────────────────────────────────────────── */}
       <Animated.View
         style={[
           s.coverWrap,
@@ -812,27 +954,21 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
             <Text style={{ fontSize: 80 }}>📚</Text>
           </View>
         )}
-        {/* Üst ve alt vignette */}
       </Animated.View>
 
-      {/* ── PANEL ALTINDA BOŞ ALAN KAPATAN SİYAH DOLGU ────────────────────
-          Panel yukarı çıkarken altında kalan kapak görüntüsünü gizler.
-          Panel'in tam altında başlar (top = PANEL_TOP + PANEL_H + BAR_H),
-          oradan ekranın sonuna kadar uzanır.
-          Aynı translateY animasyonunu kullanır → panel ile birlikte kayar.
-          ────────────────────────────────────────────────────────────────── */}
+      {/* ── Filler (boşluk kapama) ──────────────────────────────────────── */}
       <Animated.View
         style={[
           s.filler,
           {
             top: PANEL_TOP + PANEL_H + BAR_H,
-            transform: [{ translateY: fillerTY }],
+            transform: [{ translateY: panelTY }],
           },
         ]}
         pointerEvents="none"
       />
 
-      {/* ── HEADER PANEL ──────────────────────────────────────────────────── */}
+      {/* ── Header Panel ──────────────────────────────────────────────────── */}
       <Animated.View
         style={[
           s.panel,
@@ -840,7 +976,6 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
         ]}
         pointerEvents="box-none"
       >
-        {/* Info alanı */}
         <View style={s.info}>
           <View style={s.infoTop}>
             <Text style={s.mangaTitle} numberOfLines={2}>
@@ -875,31 +1010,27 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           </ScrollView>
         </View>
-
-        {/* Bölümler şeridi */}
         <View style={s.strip}>
           <View style={s.stripLeft}>
             <View style={s.stripDot} />
             <Text style={s.stripLabel}>BÖLÜMLER</Text>
           </View>
-
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={s.countTag}>
               <Text style={s.countTagTxt}>{chapters.length}</Text>
             </View>
-
             <TouchableOpacity
-              style={s.downloadAllBtn}
+              style={s.dlAllBtn}
               onPress={handleDownloadAll}
               activeOpacity={0.8}
             >
-              <Text style={s.downloadAllTxt}>HEPSİNİ İNDİR</Text>
+              <Text style={s.dlAllTxt}>HEPSİNİ İNDİR</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Animated.View>
 
-      {/* ── LİSTE ─────────────────────────────────────────────────────────── */}
+      {/* ── Liste ─────────────────────────────────────────────────────────── */}
       <Animated.ScrollView
         style={s.scroll}
         contentContainerStyle={{
@@ -921,54 +1052,50 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
             index={index}
             total={chapters.length}
             progress={progresses[item.id]}
-
+            selectMode={selectMode}
+            selected={selected.has(item.id)}
             onOpen={() => openChapter(item)}
             onDownload={() => handleDownload(item)}
             onDelete={() => handleDelete(item)}
             onToggleRead={() => handleToggleRead(item)}
-
-            // 🔥 BURAYA EKLİYORSUN
-            onLongPress={() => {
-              setSelectMode(true);
-              setSelected(prev => {
-                const copy = new Set(prev);
-                copy.add(item.id);
-                return copy;
-              });
-            }}
-
-            onSelect={() => {
-              setSelected(prev => {
-                const copy = new Set(prev);
-                copy.has(item.id)
-                  ? copy.delete(item.id)
-                  : copy.add(item.id);
-                return copy;
-              });
-            }}
+            onLongPress={() => enterSelectMode(item.id)}
+            onSelectToggle={() => toggleSelect(item.id)}
           />
         ))}
       </Animated.ScrollView>
 
       {/* ── FAB ───────────────────────────────────────────────────────────── */}
-      <Animated.View
-        style={[
-          s.fabWrap,
-          { opacity: fabOp, transform: [{ scale: fabScale }] },
-        ]}
-      >
-        <TouchableOpacity
-          style={s.fab}
-          onPress={() => setAddVisible(true)}
-          activeOpacity={0.85}
+      {!selectMode && (
+        <Animated.View
+          style={[
+            s.fabWrap,
+            { opacity: fabOp, transform: [{ scale: fabScale }] },
+          ]}
         >
-          <View style={s.fabRing} />
-          <Text style={s.fabPlus}>+</Text>
-        </TouchableOpacity>
-        <Text style={s.fabHint}>Bölüm Ekle</Text>
-      </Animated.View>
+          <TouchableOpacity
+            style={s.fab}
+            onPress={() => setAddVisible(true)}
+            activeOpacity={0.85}
+          >
+            <View style={s.fabRing} />
+            <Text style={s.fabPlus}>+</Text>
+          </TouchableOpacity>
+          <Text style={s.fabHint}>Bölüm Ekle</Text>
+        </Animated.View>
+      )}
 
-      {/* ── MODAL ─────────────────────────────────────────────────────────── */}
+      {/* ── Select Mode Bar ───────────────────────────────────────────────── */}
+      {selectMode && (
+        <SelectionBar
+          count={selected.size}
+          onCancel={exitSelectMode}
+          onDownloadSelected={handleDownloadSelected}
+          onDeleteSelected={handleDeleteSelected}
+          onMarkReadSelected={handleMarkReadSelected}
+        />
+      )}
+
+      {/* ── Modal ─────────────────────────────────────────────────────────── */}
       <AddChapterModal
         visible={addVisible}
         onClose={() => setAddVisible(false)}
@@ -1008,29 +1135,12 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  vigTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: SB_H + 30,
-    backgroundColor: 'rgba(7,7,10,0.75)',
-  },
-  vigBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: PANEL_H + BAR_H + 30,
-    backgroundColor: 'rgba(7,7,10,0.92)',
-  },
 
-  // Boşluk kapatan siyah dolgu — panel altından ekran sonuna kadar uzanır
   filler: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: -H, // ekranın çok altına kadar uzanır
+    bottom: -H,
     backgroundColor: T.bg0,
     zIndex: 5,
   },
@@ -1067,7 +1177,7 @@ const s = StyleSheet.create({
   statLbl: {
     fontSize: 10,
     fontWeight: '600',
-    color: T.inkDim,
+    color: T.inkMid,
     marginTop: 2,
     letterSpacing: 0.3,
   },
@@ -1095,7 +1205,7 @@ const s = StyleSheet.create({
   stripLabel: {
     fontSize: 10,
     fontWeight: '900',
-    color: T.inkDim,
+    color: T.ink,
     letterSpacing: 3.5,
   },
   countTag: {
@@ -1107,6 +1217,20 @@ const s = StyleSheet.create({
     borderColor: T.lineHi,
   },
   countTagTxt: { fontSize: 11, fontWeight: '800', color: T.inkMid },
+  dlAllBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: T.tealDim,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: T.teal + '40',
+  },
+  dlAllTxt: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: T.teal,
+    letterSpacing: 0.5,
+  },
 
   scroll: { flex: 1, zIndex: 10 },
 
@@ -1150,21 +1274,6 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: T.gold + 'BB',
-    letterSpacing: 0.5,
-  },
-  downloadAllBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: T.tealDim,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: T.teal + '40',
-  },
-
-  downloadAllTxt: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: T.teal,
     letterSpacing: 0.5,
   },
 });

@@ -224,7 +224,7 @@ const s = StyleSheet.create({
   statsText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#2A2A30',
+    color: '#e0e0e0',
     letterSpacing: 1,
   },
 

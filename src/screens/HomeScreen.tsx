@@ -67,11 +67,11 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, []);
 
-useFocusEffect(
-  useCallback(() => {
-    loadMangas();
-  }, [loadMangas])
-);
+  useFocusEffect(
+    useCallback(() => {
+      loadMangas();
+    }, [loadMangas]),
+  );
 
   const handleSaveManga = () => {
     setModalVisible(false);
