@@ -22,7 +22,6 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { downloadChapter, DownloadProgress } from '../actions/downloadActions';
 import { extractChapterNumber } from '../utils/chapterUtils';
-import AddMangaModal from '../components/AddMangaModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chapters'>;
 
@@ -74,71 +73,140 @@ const PANEL_TRAVEL = PANEL_TOP;
 interface AddChapterModalProps {
   visible: boolean;
   onClose: () => void;
-  onAdd: (link: string) => void;
+  onAdd: (links: string[], start?: number, end?: number) => void;
 }
+
 const AddChapterModal: React.FC<AddChapterModalProps> = ({
   visible,
   onClose,
   onAdd,
 }) => {
-  const [link, setLink] = useState('');
+  const [links, setLinks] = useState<string[]>(['']);
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
+
   const handleAdd = () => {
-    const t = link.trim();
-    if (!t) {
-      Alert.alert('Hata', 'Lütfen bir bölüm linki girin.');
+    const cleanLinks = links.map(l => l.trim()).filter(Boolean);
+
+    if (!cleanLinks.length) {
+      Alert.alert('Hata', 'En az 1 link gir.');
       return;
     }
-    onAdd(t);
-    setLink('');
+
+    onAdd(
+      cleanLinks,
+      start ? Number(start) : undefined,
+      end ? Number(end) : undefined,
+    );
+
+    setLinks(['']);
+    setStart('');
+    setEnd('');
     onClose();
   };
+
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="slide">
       <KeyboardAvoidingView
         style={m.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <TouchableOpacity
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          activeOpacity={1}
-        />
         <View style={m.sheet}>
-          <View style={m.handle} />
-          <Text style={m.sheetTitle}>Yeni Bölüm Ekle</Text>
-          <Text style={m.sheetSub}>Bölüm linki veya URL yapıştır</Text>
-          <View style={m.inputWrap}>
-            <Text style={m.inputIcon}>🔗</Text>
+          <Text style={m.sheetTitle}>Bölüm Ekle</Text>
+
+          {/* 🔥 MULTI LINK */}
+          {links.map((l, i) => (
+            <View
+              key={i}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                marginTop: 6
+              }}
+            >
+              <TextInput
+                style={[m.input, { flex: 1, marginTop: 0 }]}
+                value={l}
+                onChangeText={t => {
+                  const arr = [...links];
+                  arr[i] = t;
+                  setLinks(arr);
+                }}
+                placeholder={`Link ${i + 1}`}
+                placeholderTextColor={T.inkMid}
+              />
+
+              {/* 🔥 SADECE 2. VE SONRASI SİLİNEBİLİR */}
+              {i > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setLinks(links.filter((_, idx) => idx !== i));
+                  }}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 10,
+                    backgroundColor: T.redDim,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: T.red + '30'
+                  }}
+                >
+                  <Text style={{
+                    color: T.red,
+                    fontWeight: '800',
+                    fontSize: 16
+                  }}>
+                    ✕
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+
+          <TouchableOpacity onPress={() => setLinks([...links, ''])}>
+            <Text style={{
+              color: T.gold,
+              marginTop: 12,
+              fontSize: 14,
+              fontWeight: '700'
+            }}>
+              + link ekle
+            </Text>
+          </TouchableOpacity>
+
+          {/* 🔥 RANGE */}
+          <Text style={{ color: T.ink, marginTop: 16 }}>
+            Toplu ekleme (opsiyonel)
+          </Text>
+
+          <View style={{ flexDirection: 'row', gap: 10 }}>
             <TextInput
-              style={m.input}
-              value={link}
-              onChangeText={setLink}
-              placeholder="https://..."
+              style={[m.input, { flex: 1 }]}
+              placeholder="Başlangıç"
+              keyboardType="numeric"
+              value={start}
+              onChangeText={setStart}
               placeholderTextColor={T.inkDim}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="done"
-              onSubmitEditing={handleAdd}
+            />
+            <TextInput
+              style={[m.input, { flex: 1 }]}
+              placeholder="Bitiş"
+              keyboardType="numeric"
+              value={end}
+              onChangeText={setEnd}
+              placeholderTextColor={T.inkDim}
             />
           </View>
+
           <View style={m.btnRow}>
-            <TouchableOpacity
-              style={m.btnCancel}
-              onPress={onClose}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity style={m.btnCancel} onPress={onClose}>
               <Text style={m.btnCancelText}>İptal</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={m.btnAdd}
-              onPress={handleAdd}
-              activeOpacity={0.8}
-            >
+
+            <TouchableOpacity style={m.btnAdd} onPress={handleAdd}>
               <Text style={m.btnAddText}>Ekle</Text>
             </TouchableOpacity>
           </View>
@@ -189,8 +257,21 @@ const m = StyleSheet.create({
     marginBottom: 20,
   },
   inputIcon: { fontSize: 16, marginRight: 10 },
-  input: { flex: 1, height: 50, fontSize: 14, color: T.ink },
-  btnRow: { flexDirection: 'row', gap: 12 },
+  input: {
+    flex: 1,
+    height: 52,
+    fontSize: 16,
+    color: T.ink,
+
+    backgroundColor: T.bg3,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    marginTop: 10,
+
+    borderWidth: 1,
+    borderColor: T.lineHi,
+  },
+  btnRow: { flexDirection: 'row', gap: 12,marginTop: 20 },
   btnCancel: {
     flex: 1,
     height: 50,
@@ -223,6 +304,10 @@ interface RowProps {
   onDownload: () => void;
   onDelete: () => void;
   onToggleRead: () => void;
+  onLongPress?: () => void;
+  onSelect?: () => void;
+  selectMode?: boolean;
+  selected?: boolean;
 }
 const ChapterRow: React.FC<RowProps> = ({
   item,
@@ -440,7 +525,8 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
     Record<string, DownloadProgress>
   >({});
   const [addVisible, setAddVisible] = useState(false);
-
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const activeDownloads = useRef<Set<string>>(new Set());
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -530,41 +616,101 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
     loadChapters();
   }, [loadChapters]);
 
-  const handleAddChapter = async (link: string) => {
+  const handleAddChapter = async (
+    links: string[],
+    start?: number,
+    end?: number,
+  ) => {
     try {
       const raw = await AsyncStorage.getItem('localMangas');
       if (!raw) return;
+
       const list = JSON.parse(raw);
       const idx = list.findIndex((m: any) => m.title === mangaTitle);
       if (idx === -1) return;
-      const chapterNumber = extractChapterNumber(link) ?? undefined;
-      list[idx].chapters = [
-        {
-          id: `manual_${Date.now()}`,
+
+      let chapters = list[idx].chapters || [];
+
+      // 🔥 1. NORMAL LINKLER
+      for (let link of links) {
+        const num = extractChapterNumber(link);
+
+        const exists = chapters.find((c: any) => c.link === link);
+        if (exists) continue;
+
+        chapters.unshift({
+          id: Date.now().toString() + Math.random(),
           link,
-          date: new Date().toISOString().slice(0, 10),
-          chapterNumber,
-        },
-        ...(list[idx].chapters || []),
-      ];
+          date: new Date().toISOString(),
+          chapterNumber: num ?? undefined,
+        });
+      }
+
+      // 🔥 2. RANGE
+      if (start && end && links[0]) {
+        const base = links[0];
+
+        for (let i = start; i <= end; i++) {
+          const newLink = base.replace(/\d+\/?$/, `${i}/`);
+
+          const exists = chapters.find((c: any) => c.link === newLink);
+          if (exists) continue;
+
+          chapters.unshift({
+            id: Date.now().toString() + i,
+            link: newLink,
+            date: new Date().toISOString(),
+            chapterNumber: i,
+          });
+        }
+      }
+
+      list[idx].chapters = chapters;
+
       await AsyncStorage.setItem('localMangas', JSON.stringify(list));
+
       loadChapters();
-    } catch {
-      Alert.alert('Hata', 'Bölüm eklenirken bir hata oluştu.');
+    } catch (e) {
+      Alert.alert('Hata', 'Eklenemedi');
     }
   };
 
-  const handleDownload = async (ch: Chapter) => {
-    if (activeDownloads.current.has(ch.id)) return;
-    activeDownloads.current.add(ch.id);
-    await downloadChapter(mangaTitle, ch.id, ch.link, p => {
-      setProgresses(prev => ({ ...prev, [ch.id]: p }));
-      if (p.status === 'done' || p.status === 'error') {
-        activeDownloads.current.delete(ch.id);
-        loadChapters();
-      }
-    });
+  const markChapterDownloaded = async (chapterId: string) => {
+    const raw = await AsyncStorage.getItem('localMangas');
+    if (!raw) return;
+
+    const list = JSON.parse(raw);
+
+    const idx = list.findIndex((m: any) => m.title === mangaTitle);
+    if (idx === -1) return;
+
+    list[idx].chapters = list[idx].chapters.map((c: any) =>
+      c.id === chapterId ? { ...c, downloaded: true } : c,
+    );
+
+    await AsyncStorage.setItem('localMangas', JSON.stringify(list));
   };
+  
+  const handleDownload = async (ch: Chapter) => {
+  if (activeDownloads.current.has(ch.id)) return;
+  activeDownloads.current.add(ch.id);
+
+  await downloadChapter(mangaTitle, ch.id, ch.link, async p => {
+    setProgresses(prev => ({ ...prev, [ch.id]: p }));
+
+    if (p.status === 'done') {
+      activeDownloads.current.delete(ch.id);
+
+      await markChapterDownloaded(ch.id);
+
+      loadChapters();
+    }
+
+    if (p.status === 'error') {
+      activeDownloads.current.delete(ch.id);
+    }
+  });
+};
 
   const openChapter = (ch: Chapter) => {
     if (ch.downloaded && ch.pages?.length)
@@ -610,6 +756,19 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
     );
     await AsyncStorage.setItem('localMangas', JSON.stringify(list));
     loadChapters();
+  };
+
+  const handleDownloadAll = async () => {
+    const notDownloaded = chapters.filter(c => !c.downloaded);
+
+    if (!notDownloaded.length) {
+      Alert.alert('Bilgi', 'Tüm bölümler zaten indirilmiş.');
+      return;
+    }
+
+    for (const ch of notDownloaded) {
+      await handleDownload(ch);
+    }
   };
 
   if (loading)
@@ -723,8 +882,19 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
             <View style={s.stripDot} />
             <Text style={s.stripLabel}>BÖLÜMLER</Text>
           </View>
-          <View style={s.countTag}>
-            <Text style={s.countTagTxt}>{chapters.length}</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={s.countTag}>
+              <Text style={s.countTagTxt}>{chapters.length}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={s.downloadAllBtn}
+              onPress={handleDownloadAll}
+              activeOpacity={0.8}
+            >
+              <Text style={s.downloadAllTxt}>HEPSİNİ İNDİR</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Animated.View>
@@ -751,10 +921,31 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
             index={index}
             total={chapters.length}
             progress={progresses[item.id]}
+
             onOpen={() => openChapter(item)}
             onDownload={() => handleDownload(item)}
             onDelete={() => handleDelete(item)}
             onToggleRead={() => handleToggleRead(item)}
+
+            // 🔥 BURAYA EKLİYORSUN
+            onLongPress={() => {
+              setSelectMode(true);
+              setSelected(prev => {
+                const copy = new Set(prev);
+                copy.add(item.id);
+                return copy;
+              });
+            }}
+
+            onSelect={() => {
+              setSelected(prev => {
+                const copy = new Set(prev);
+                copy.has(item.id)
+                  ? copy.delete(item.id)
+                  : copy.add(item.id);
+                return copy;
+              });
+            }}
           />
         ))}
       </Animated.ScrollView>
@@ -959,6 +1150,21 @@ const s = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: T.gold + 'BB',
+    letterSpacing: 0.5,
+  },
+  downloadAllBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: T.tealDim,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: T.teal + '40',
+  },
+
+  downloadAllTxt: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: T.teal,
     letterSpacing: 0.5,
   },
 });

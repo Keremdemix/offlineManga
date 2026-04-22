@@ -15,6 +15,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import AddMangaModal from '../components/AddMangaModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -66,9 +67,11 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
     }
   }, []);
 
-  useEffect(() => {
+useFocusEffect(
+  useCallback(() => {
     loadMangas();
-  }, [loadMangas]);
+  }, [loadMangas])
+);
 
   const handleSaveManga = () => {
     setModalVisible(false);

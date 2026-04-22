@@ -3,7 +3,7 @@ export function extractChapterNumber(input: string): number | null {
 
   // 1) öncelik: explicit chapter patterns
   const explicit = input.match(
-    /(?:bolum|bölüm|chapter|episode|ch)[-\/]?\s*(\d+(?:\.\d+)?)/i
+    /(?:bolum|bölüm|chapter|episode|ch)[-\/]?\s*(\d+(?:\.\d+)?)/i,
   );
 
   if (explicit?.[1]) {
@@ -12,10 +12,7 @@ export function extractChapterNumber(input: string): number | null {
 
   // 2) fallback: URL'nin SON numeric segmenti
   // örnek: .../845-bolum  veya .../10419/845
-  const segments = input
-    .split('/')
-    .filter(Boolean)
-    .reverse();
+  const segments = input.split('/').filter(Boolean).reverse();
 
   for (const seg of segments) {
     const match = seg.match(/(\d+(?:\.\d+)?)/);

@@ -1,73 +1,69 @@
 export function parseMangaImages(html: string): string[] {
+  if (!html) return [];
+
   const urls: string[] = [];
 
-  // 1️⃣ Direkt tüm HTML içinde img taglerini yakala
-  const imgRegex = /<img[^>]+>/gi;
-
+  // 🔥 1. IMG TAGS
+  const imgRegex = /<img[^>]*>/gi;
   let match: RegExpExecArray | null;
 
   while ((match = imgRegex.exec(html)) !== null) {
     const imgTag = match[0];
 
     const url =
-      /data-src="([^"]+)"/i.exec(imgTag)?.[1] ||
-      /data-lazy-src="([^"]+)"/i.exec(imgTag)?.[1] ||
-      /data-original="([^"]+)"/i.exec(imgTag)?.[1] ||
-      /src="([^"]+)"/i.exec(imgTag)?.[1];
+      /data-src\s*=\s*"([^"]+)"/i.exec(imgTag)?.[1] ||
+      /data-lazy-src\s*=\s*"([^"]+)"/i.exec(imgTag)?.[1] ||
+      /data-original\s*=\s*"([^"]+)"/i.exec(imgTag)?.[1] ||
+      /src\s*=\s*"([^"]+)"/i.exec(imgTag)?.[1];
 
     if (!url) continue;
 
-    const cleanUrl = url.trim();
+    const clean = url.trim();
 
-    // ❌ thumbnail / small image detection
-    const isThumbnail = /-\d{2,4}x\d{2,4}(-\d+)?\./.test(cleanUrl);
-    cleanUrl.includes('thumb') || cleanUrl.includes('thumbnail');
-
-    // ❌ unwanted assets
-    const isUnwanted =
-      cleanUrl.includes('logo') ||
-      cleanUrl.includes('icon') ||
-      cleanUrl.includes('avatar') ||
-      cleanUrl.includes('banner') ||
-      cleanUrl.includes('cover') ||
-      cleanUrl.includes('covers') ||
-      cleanUrl.includes('profile') ||
-      cleanUrl.includes('author') ||
-      cleanUrl.includes('user-') ||
-      cleanUrl.includes('default');
-
-    // ❌ extension check (sadece image kalsın)
-    const isValidImage = /\.(png|jpg|jpeg|webp)$/i.test(cleanUrl);
-
+    // ❌ invalids
     if (
-      !cleanUrl.startsWith('http') ||
-      !isValidImage ||
-      isThumbnail ||
-      isUnwanted
-    ) {
+      !clean ||
+      clean.startsWith('data:') ||
+      clean.includes('placeholder') ||
+      clean.includes('loading')
+    )
       continue;
-    }
 
-    urls.push(cleanUrl);
+    // ❌ asset filter (SAFE VERSION)
+    const isAsset = /logo|icon|avatar|banner|profile|favicon/i.test(clean);
+
+    // ❌ image check
+    const isImage = /\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(clean);
+
+    if (!isImage || isAsset) continue;
+
+    urls.push(clean);
   }
 
-  // 4️⃣ Duplicate temizle
-  const uniqueUrls = [...new Set(urls)];
+  // 🔥 2. FALLBACK (SPAN / DIV background-image lazy sites)
+  const bgRegex = /background-image\s*:\s*url\(["']?(.*?)["']?\)/gi;
+  let bgMatch;
 
-  // 5️⃣ Sayıya göre sırala (1.jpg, 2.jpg vs)
-  uniqueUrls.sort((a, b) => {
-    const getNum = (str: string) => {
-      const match = str.match(/(\d+)(?=\.\w+$)/);
-      return match ? parseInt(match[1], 10) : 0;
+  while ((bgMatch = bgRegex.exec(html)) !== null) {
+    const clean = bgMatch[1]?.trim();
+    if (clean && clean.startsWith('http')) {
+      urls.push(clean);
+    }
+  }
+
+  // 🔥 3. CLEAN + UNIQUE
+  const unique = [...new Set(urls)];
+
+  // 🔥 4. SORT (son sayı bazlı)
+  unique.sort((a, b) => {
+    const getNum = (s: string) => {
+      const m = s.match(/(\d+)(?=\.\w+(\?|$))/);
+      return m ? Number(m[1]) : 0;
     };
     return getNum(a) - getNum(b);
   });
 
-  console.log('FOUND IMAGES:', uniqueUrls.length);
-  console.log('IMAGE LIST:');
-  uniqueUrls.forEach((url, index) => {
-    console.log(`${index + 1}. ${url}`);
-  });
+  console.log('FOUND IMAGES:', unique.length);
 
-  return uniqueUrls;
+  return unique;
 }
