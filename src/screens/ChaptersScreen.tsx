@@ -58,7 +58,7 @@ const T = {
 
 const { height: H } = Dimensions.get('window');
 const SB_H = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight ?? 24;
-const COVER_H = Math.round(H * 0.58);
+const COVER_H = Math.round(H * 0.48);
 const PANEL_H = 130;
 const BAR_H = 46;
 const STICK_AT = COVER_H - SB_H;
@@ -1027,6 +1027,16 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
               <Text style={s.dlAllTxt}>HEPSİNİ İNDİR</Text>
             </TouchableOpacity>
           </View>
+          {/* 🔥 YENİ */}
+        </View>
+        <View style={s.addTopWrap}>
+          <TouchableOpacity
+            style={s.addTopBtn}
+            onPress={() => setAddVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={s.addTopTxt}>+ Bölüm Ekle</Text>
+          </TouchableOpacity>
         </View>
       </Animated.View>
 
@@ -1034,7 +1044,7 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
       <Animated.ScrollView
         style={s.scroll}
         contentContainerStyle={{
-          paddingTop: COVER_H + PANEL_H + BAR_H,
+          paddingTop: COVER_H + PANEL_H + BAR_H + 60,
           paddingBottom: 120,
         }}
         onScroll={Animated.event(
@@ -1064,25 +1074,6 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
         ))}
       </Animated.ScrollView>
 
-      {/* ── FAB ───────────────────────────────────────────────────────────── */}
-      {!selectMode && (
-        <Animated.View
-          style={[
-            s.fabWrap,
-            { opacity: fabOp, transform: [{ scale: fabScale }] },
-          ]}
-        >
-          <TouchableOpacity
-            style={s.fab}
-            onPress={() => setAddVisible(true)}
-            activeOpacity={0.85}
-          >
-            <View style={s.fabRing} />
-            <Text style={s.fabPlus}>+</Text>
-          </TouchableOpacity>
-          <Text style={s.fabHint}>Bölüm Ekle</Text>
-        </Animated.View>
-      )}
 
       {/* ── Select Mode Bar ───────────────────────────────────────────────── */}
       {selectMode && (
@@ -1276,4 +1267,25 @@ const s = StyleSheet.create({
     color: T.gold + 'BB',
     letterSpacing: 0.5,
   },
+  addTopWrap: {
+  backgroundColor: T.bg0,
+  paddingHorizontal: 16,
+  paddingVertical: 10,
+  borderBottomWidth: 1,
+  borderBottomColor: T.line,
+},
+
+addTopBtn: {
+  height: 48,
+  borderRadius: 12,
+  backgroundColor: T.gold,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+addTopTxt: {
+  fontSize: 14,
+  fontWeight: '800',
+  color: T.bg0,
+},
 });

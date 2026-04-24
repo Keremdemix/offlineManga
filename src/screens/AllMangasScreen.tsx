@@ -34,10 +34,10 @@ const CARD   = '#141416';
 const BORDER = '#1F1F24';
 
 const { width: W } = Dimensions.get('window');
-const COLS   = 3;
+const COLS   = 2; //3
 const GAP    = 10;
 const PAD    = 16;
-const CARD_W = (W - PAD * 2 - GAP * (COLS - 1)) / COLS;
+const CARD_W = (W - PAD * 2 - GAP) / 2; //(W - PAD * 2 - GAP * (COLS - 1)) / COLS;
 
 // ─── Dropdown pozisyon tipi ───────────────────────────────────────────────────
 interface DropdownPos {
@@ -253,7 +253,7 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
             s.dropdown,
             {
               left: dropdown.x - 17, // (35 / 2)
-              top: dropdown.y-90 , // Menü yüksekliği + biraz boşluk
+              top: dropdown.y+10 , // Menü yüksekliği + biraz boşluk
             },
           ]}>
             {/* EDIT */}
@@ -359,8 +359,13 @@ const s = StyleSheet.create({
   progressOverlay: { height: 2, backgroundColor: '#222' },
   progressFill:    { height: 2, backgroundColor: AMBER },
 
-  cardInfo:  { padding: 7 },
-  cardTitle: { fontSize: 11, fontWeight: '700', color: '#C8C8D0' },
+  cardInfo:  { padding: 10 },
+  cardTitle: { 
+  fontSize: 14,          
+  fontWeight: '800',     
+  color: '#E5E5EE',      
+  lineHeight: 18,        
+},
 
   menuBtn: {
     position: 'absolute', top: 5, right: 5,
