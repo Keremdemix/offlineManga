@@ -220,24 +220,6 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                       <Text style={{ fontSize: 28 }}>📖</Text>
                     </View>
                   )}
-
-                  {/* Sol üst: İndirildi / Okunmadı badge */}
-                  <View style={s.cardBadgeStack}>
-                    {dlCount > 0 && (
-                      <View style={[s.cardBadge, s.cardBadgeAmber]}>
-                        <Text style={[s.cardBadgeTxt, { color: BG }]}>
-                          ↓{dlCount}
-                        </Text>
-                      </View>
-                    )}
-                    {unread > 0 && (
-                      <View style={[s.cardBadge, s.cardBadgeViolet]}>
-                        <Text style={[s.cardBadgeTxt, { color: '#fff' }]}>
-                          !{unread}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
                 </View>
 
                 {/* İçerik */}
@@ -251,7 +233,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                   {!!total && (
                     <View style={s.progressWrap}>
                       <View style={s.progressBg}>
-                        <View style={[s.progressFill, { width: `${dlPct}%` }]} />
+                        <View style={[s.progressFillLoad, { width: `${dlPct}%` }]} />
                       </View>
                       <Text style={s.progressLbl}>
                         {dlCount}/{total}
@@ -262,7 +244,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
                   {!!total && (
                     <View style={s.progressWrap}>
                       <View style={s.progressBg}>
-                        <View style={[s.progressFill, { width: `${dlPct}%` }]} />
+                        <View style={[s.progressFillRead, { width: `${readPct}%` }]} />
                       </View>
                       <Text style={s.progressLbl}>
                         {readCount}/{total}
@@ -272,14 +254,25 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
 
                   {/* Okundu / Okunmadı satırı — MOR */}
                   {!!total && (
-                    <View style={s.readRow}>
+                    <View style={s.progressMetaRow}>
+
+                      {/* DOWNLOAD */}
+                      <View style={s.downloadPill}>
+                        <Text style={s.downloadPillTxt}>
+                          {dlCount}/{total} yüklenen
+                        </Text>
+                      </View>
+
+                      {/* READ */}
                       <View style={s.readPill}>
                         <Text style={s.readPillTxt}>
                           {readCount}/{total} okundu
                         </Text>
                       </View>
+
                     </View>
-                  )}
+                  )}  
+                  
                 </View>
 
                 <Text style={s.chevron}>›</Text>
@@ -419,8 +412,8 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  cardCoverWrap: { position: 'relative' },
-  cardCover:     { width: 80, height: 114 },   // büyütüldü
+  cardCoverWrap: { position: 'relative',padding: 4 },
+  cardCover:     { width: 100, height: 140, borderRadius: 18, borderWidth: 1 },   
   cardCoverPh: {
     backgroundColor: '#1A1A1E',
     justifyContent: 'center',
@@ -468,16 +461,17 @@ const s = StyleSheet.create({
     borderRadius: 1,
     overflow: 'hidden',
   },
-  progressFill: { height: 2, backgroundColor: AMBER, borderRadius: 1 },
+  progressFillLoad: { height: 2, backgroundColor: AMBER, borderRadius: 1 },
+  progressFillRead: { height: 2, backgroundColor: VIOLET, borderRadius: 1 },
   progressLbl:  { fontSize: 10, color: '#9e9e9eff', fontWeight: '700' },
 
   // Okundu pill — mor
-  readRow: { flexDirection: 'row' },
   readPill: {
     backgroundColor: 'rgba(139,92,246,0.15)',
     borderWidth: 1,
     borderColor: 'rgba(139,92,246,0.35)',
     borderRadius: 7,
+    flexShrink: 0,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
@@ -487,6 +481,31 @@ const s = StyleSheet.create({
     color: VIOLET,
     letterSpacing: 0.2,
   },
+
+  // Okundu pill — mor
+  downloadPill: {
+    backgroundColor: 'rgba(245,166,35,0.15)',
+    borderWidth: 1,
+    flexShrink: 0,
+    borderColor: 'rgba(245,166,35,0.35)',
+    borderRadius: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+
+  downloadPillTxt: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: AMBER,
+    letterSpacing: 0.2,
+  },
+
+  progressMetaRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  marginTop: 2,
+},
 
   chevron: { fontSize: 22, color: '#222', paddingRight: 14 },
 

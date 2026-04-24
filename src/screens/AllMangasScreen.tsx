@@ -12,6 +12,7 @@ import {
   StatusBar,
   Modal,
   TouchableWithoutFeedback,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -25,19 +26,21 @@ interface Manga {
   cover?: string;
   totalChapters?: number;
   downloadedChapters?: number;
+  readChapters?: number;
 }
 
 // ─── Sabitler ─────────────────────────────────────────────────────────────────
 const AMBER  = '#F5A623';
+const VIOLET = '#8B5CF6';
 const BG     = '#0C0C0E';
 const CARD   = '#141416';
 const BORDER = '#1F1F24';
 
 const { width: W } = Dimensions.get('window');
-const COLS   = 2; //3
+const COLS   = 2;
 const GAP    = 10;
 const PAD    = 16;
-const CARD_W = (W - PAD * 2 - GAP) / 2; //(W - PAD * 2 - GAP * (COLS - 1)) / COLS;
+const CARD_W = (W - PAD * 2 - GAP) / 2;
 
 // ─── Dropdown pozisyon tipi ───────────────────────────────────────────────────
 interface DropdownPos {
@@ -48,34 +51,36 @@ interface DropdownPos {
 
 // ─── AllMangasScreen ──────────────────────────────────────────────────────────
 const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
-  // ✅ route.params yerine doğrudan storage'dan okuyoruz
-  // Böylece edit/delete sonrası ekran otomatik güncellenir
-  const [mangas,      setMangas]      = useState<Manga[]>([]);
-  const [query,       setQuery]       = useState('');
-  const [menuVisible, setMenuVisible] = useState<string | null>(null);
-  const [dropdown,    setDropdown]    = useState<DropdownPos | null>(null);
-  const [editVisible, setEditVisible] = useState(false);
+  const [mangas,       setMangas]       = useState<Manga[]>([]);
+  const [query,        setQuery]        = useState('');
+  const [menuVisible,  setMenuVisible]  = useState<string | null>(null);
+  const [dropdown,     setDropdown]     = useState<DropdownPos | null>(null);
+  const [editVisible,  setEditVisible]  = useState(false);
   const [editingManga, setEditingManga] = useState<string | null>(null);
-  const [editTitle,   setEditTitle]   = useState('');
-  const [editCover,   setEditCover]   = useState('');
+  const [editTitle,    setEditTitle]    = useState('');
+  const [editCover,    setEditCover]    = useState('');
 
-  // Her kart ⋮ butonunun View ref'i
   const menuRefs = useRef<Map<string, View | null>>(new Map());
 
   // ── Storage'dan yükle ────────────────────────────────────────────────────────
   const loadMangas = useCallback(async () => {
     try {
       const data = await getMangas();
-      setMangas(data as Manga[]);
+      // getMangas'ın döndürdüğü veriyi readChapters ile zenginleştir
+      const enriched = (data as any[]).map((m: any) => ({
+        ...m,
+        readChapters: m.chapters?.filter((c: any) => c.read).length ?? 0,
+        downloadedChapters: m.chapters?.filter((c: any) => c.downloaded).length ?? (m.downloadedChapters ?? 0),
+        totalChapters: m.chapters?.length ?? (m.totalChapters ?? 0),
+      }));
+      setMangas(enriched as Manga[]);
     } catch (e) {
       console.error('loadMangas error:', e);
     }
   }, []);
 
-  // İlk açılışta yükle
   useEffect(() => { loadMangas(); }, [loadMangas]);
 
-  // Başka ekrandan dönünce de yükle (örn. ChaptersScreen'den geri gelince)
   useFocusEffect(useCallback(() => { loadMangas(); }, [loadMangas]));
 
   const filtered = query.trim()
@@ -86,14 +91,9 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
   const openMenu = (manga: Manga) => {
     const ref = menuRefs.current.get(manga.title);
     if (!ref) return;
-
     setTimeout(() => {
       ref.measureInWindow((x, y, w, h) => {
-        setDropdown({
-          manga,
-          x: x + w / 2, 
-          y: y + h/2,
-        });
+        setDropdown({ manga, x: x + w / 2, y: y + h / 2 });
       });
     }, 0);
   };
@@ -114,40 +114,76 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
 
   const saveEdit = async () => {
     if (!editingManga || !editTitle.trim()) return;
-    try {
-      await updateManga(editingManga, {
-        title: editTitle.trim(),
-        cover: editCover.trim() || undefined,
-      });
-      // ✅ Storage güncellendi, state'i de güncelle
-      await loadMangas();
-    } catch (e) {
-      console.error('updateManga error:', e);
-    } finally {
-      setEditVisible(false);
-      setEditingManga(null);
-      setEditTitle('');
-      setEditCover('');
-    }
+
+    Alert.alert(
+      'Değişiklikleri Kaydet',
+      `"${editingManga}" güncellensin mi?`,
+      [
+        {
+          text: 'İptal',
+          style: 'cancel',
+        },
+        {
+          text: 'Kaydet',
+          onPress: async () => {
+            try {
+              await updateManga(editingManga, {
+                title: editTitle.trim(),
+                cover: editCover.trim() || undefined,
+              });
+
+              await loadMangas();
+            } catch (e) {
+              console.error('updateManga error:', e);
+            } finally {
+              setEditVisible(false);
+              setEditingManga(null);
+              setEditTitle('');
+              setEditCover('');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   // ── Delete ───────────────────────────────────────────────────────────────────
-  const handleDelete = async (title: string) => {
-    closeMenu();
-    try {
-      await deleteManga(title);
-      // ✅ Storage güncellendi, state'i de güncelle
-      await loadMangas();
-    } catch (e) {
-      console.error('deleteManga error:', e);
-    }
-  };
+  const handleDelete = (title: string) => {
+  closeMenu();
+
+  Alert.alert(
+    'Manga Sil',
+    `"${title}" silinsin mi? Bu işlem geri alınamaz.`,
+    [
+      {
+        text: 'İptal',
+        style: 'cancel',
+      },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteManga(title);
+            await loadMangas();
+          } catch (e) {
+            console.error('deleteManga error:', e);
+          }
+        },
+      },
+    ],
+    { cancelable: true }
+  );
+};
 
   // ── Render item ──────────────────────────────────────────────────────────────
   const renderItem = ({ item }: { item: Manga }) => {
-    const dlPct = item.totalChapters
-      ? Math.round(((item.downloadedChapters ?? 0) / item.totalChapters) * 100)
-      : 0;
+    const total    = item.totalChapters      ?? 0;
+    const dlCount  = item.downloadedChapters ?? 0;
+    const readCount = item.readChapters      ?? 0;
+    const unread   = total - readCount;
+    const dlPct    = total ? Math.round((dlCount / total) * 100) : 0;
 
     return (
       <View style={s.cardWrap}>
@@ -169,8 +205,9 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           )}
 
+
           {/* PROGRESS */}
-          {!!item.totalChapters && (
+          {!!total && (
             <View style={s.progressOverlay}>
               <View style={[s.progressFill, { width: `${dlPct}%` as any }]} />
             </View>
@@ -178,11 +215,34 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
 
           {/* INFO */}
           <View style={s.cardInfo}>
-            <Text style={s.cardTitle} numberOfLines={2}>{item.title}</Text>
+            <Text style={s.cardTitle} numberOfLines={2}>
+              {item.title}
+            </Text>
+
+            {/* INFO ROW */}
+            {!!total && (
+              <View style={s.progressMetaColumn}>
+
+                {/* DOWNLOAD */}
+                <View style={s.downloadPill}>
+                  <Text style={s.downloadPillTxt}>
+                    {dlCount}/{total} indirildi 
+                  </Text>
+                </View>
+
+                {/* READ */}
+                <View style={s.readPill}>
+                  <Text style={s.readPillTxt}>
+                    {readCount}/{total} {unread > 0 ? 'okundu' : 'tamamlandı'} 
+                  </Text>
+                </View>
+
+              </View>
+            )}
           </View>
         </TouchableOpacity>
 
-        {/* ⋮ BUTTON — View wrapper ile measure için */}
+        {/* ⋮ BUTTON */}
         <View
           ref={ref => { menuRefs.current.set(item.title, ref); }}
           style={s.menuBtn}
@@ -237,7 +297,7 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
         renderItem={renderItem}
       />
 
-      {/* ── DROPDOWN — Modal ile render edilir, FlatList overflow sorununu aşar */}
+      {/* ── DROPDOWN ──────────────────────────────────────────────────────── */}
       {dropdown && (
         <Modal
           visible
@@ -251,12 +311,8 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
 
           <View style={[
             s.dropdown,
-            {
-              left: dropdown.x - 17, // (35 / 2)
-              top: dropdown.y+10 , // Menü yüksekliği + biraz boşluk
-            },
+            { left: dropdown.x - 17, top: dropdown.y + 10 },
           ]}>
-            {/* EDIT */}
             <TouchableOpacity
               style={s.dropdownItem}
               onPress={() => handleEdit(dropdown.manga)}
@@ -265,7 +321,6 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={s.icon}>✏️</Text>
             </TouchableOpacity>
 
-            {/* DELETE */}
             <TouchableOpacity
               style={s.dropdownItem}
               onPress={() => handleDelete(dropdown.manga.title)}
@@ -277,7 +332,7 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
         </Modal>
       )}
 
-      {/* ── EDIT MODAL ───────────────────────────────────────────────────── */}
+      {/* ── EDIT MODAL ────────────────────────────────────────────────────── */}
       {editVisible && (
         <Modal
           visible
@@ -329,9 +384,58 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
 
 export default AllMangasScreen;
 
-// ─── Styles (orijinal tasarım) ────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
+  
+  // Okundu pill — mor
+  readPill: {
+    backgroundColor: 'rgba(139,92,246,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.35)',
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    flexDirection: 'row',
+    width: 130,
+    justifyContent: 'center',
+  },
+
+  readPillTxt: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: VIOLET,
+    letterSpacing: 0.2,
+  },
+
+  // Okundu pill — mor
+  downloadPill: {
+    backgroundColor: 'rgba(245,166,35,0.15)',
+    borderWidth: 1,
+    flexShrink: 0,
+    borderColor: 'rgba(245,166,35,0.35)',
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    flexDirection: 'row',
+    width: 130,
+    justifyContent: 'center',
+
+  },
+
+  downloadPillTxt: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: AMBER,
+    letterSpacing: 0.2,
+  },
+
+  progressMetaColumn: {
+  flexDirection: 'column',
+  alignItems: 'center',
+  marginTop: 8,
+  gap: 4,
+},
 
   searchWrap: {
     flexDirection: 'row', alignItems: 'center',
@@ -353,19 +457,20 @@ const s = StyleSheet.create({
     borderRadius: 10, overflow: 'hidden',
     backgroundColor: CARD, borderWidth: 1, borderColor: BORDER,
   },
-  cover:   { width: '100%', height: CARD_W * 1.45 },
+  cover:   { width: '100%', height: CARD_W * 1.25 },
   coverPh: { backgroundColor: '#1A1A1E', justifyContent: 'center', alignItems: 'center' },
 
   progressOverlay: { height: 2, backgroundColor: '#222' },
   progressFill:    { height: 2, backgroundColor: AMBER },
 
   cardInfo:  { padding: 10 },
-  cardTitle: { 
-  fontSize: 14,          
-  fontWeight: '800',     
-  color: '#E5E5EE',      
-  lineHeight: 18,        
-},
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#E5E5EE',
+    lineHeight: 18,
+    textAlign: 'center',
+  },
 
   menuBtn: {
     position: 'absolute', top: 5, right: 5,
@@ -374,9 +479,8 @@ const s = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     overflow: 'hidden',
   },
-  menuDots: { color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  menuDots: { color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center',paddingTop: 4 },
 
-  // Dropdown (Modal içinde absolute)
   dropdown: {
     position: 'absolute',
     backgroundColor: 'transparent',
@@ -388,13 +492,13 @@ const s = StyleSheet.create({
   },
   dropdownItem: {
     width: 35, height: 35, borderRadius: 10,
+    borderWidth: 1, borderColor: '#fff',
     justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#2a2a2f',
+    backgroundColor: 'rgba(0,0,0,0.8)',
     marginVertical: 1,
   },
   icon: { fontSize: 14 },
 
-  // Modal
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center', alignItems: 'center',
@@ -403,7 +507,7 @@ const s = StyleSheet.create({
     width: '80%', backgroundColor: '#1a1a1d',
     padding: 16, borderRadius: 12,
   },
-  modalTitle: { color: '#fff', fontSize: 16, marginBottom: 10, fontWeight: '700' },
-  modalInput: { backgroundColor: '#2a2a2f', color: '#fff', padding: 10, borderRadius: 8 },
+  modalTitle:   { color: '#fff', fontSize: 16, marginBottom: 10, fontWeight: '700' },
+  modalInput:   { backgroundColor: '#2a2a2f', color: '#fff', padding: 10, borderRadius: 8 },
   modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
 });
