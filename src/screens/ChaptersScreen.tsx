@@ -523,9 +523,9 @@ const ChapterRow: React.FC<RowProps> = ({
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: 15,
                 fontWeight: '900',
-                color: T.redDim + 'CC',
+                color: T.ink + 'CC',
               }}
             >
               ✕
