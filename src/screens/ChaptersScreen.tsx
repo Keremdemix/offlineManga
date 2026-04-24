@@ -59,7 +59,7 @@ const T = {
 const { height: H } = Dimensions.get('window');
 const SB_H = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight ?? 24;
 const COVER_H = Math.round(H * 0.48);
-const PANEL_H = 130;
+const PANEL_H = 130; 
 const BAR_H = 46;
 const STICK_AT = COVER_H - SB_H;
 const PANEL_TOP = COVER_H;
