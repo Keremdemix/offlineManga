@@ -10,206 +10,309 @@ import {
   Text,
   Animated,
   PanResponder,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  ScrollView,
+  Modal,
+  StatusBar,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { downloadMangaChapter } from '../services/mangaService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Manga'>;
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const { width: SW, height: SH } = Dimensions.get('window');
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
+
+const C = {
+  bg:      '#0a0a0a',
+  bgGray:  '#1a1a1a',
+  bgSepia: '#2b2318',
+  gold:    '#D4A843',
+  ink:     '#E8E8F2',
+  inkMid:  '#8888A0',
+  line:    '#2E2E40',
+};
+
+type ReadMode = 'vertical' | 'page';
+type BgMode   = 'black' | 'gray' | 'sepia';
+
+const BG_COLORS: Record<BgMode, string> = {
+  black: C.bg,
+  gray:  C.bgGray,
+  sepia: C.bgSepia,
+};
 
 function dist(
   t1: { pageX: number; pageY: number },
   t2: { pageX: number; pageY: number },
 ) {
-  const dx = t1.pageX - t2.pageX;
-  const dy = t1.pageY - t2.pageY;
-  return Math.sqrt(dx * dx + dy * dy);
+  return Math.sqrt((t1.pageX - t2.pageX) ** 2 + (t1.pageY - t2.pageY) ** 2);
 }
 
-// ─── Single page (dumb image, no gesture logic here) ─────────────────────────
-const MangaPage: React.FC<{ imagePath: string }> = React.memo(
-  ({ imagePath }) => {
-    const [aspectRatio, setAspectRatio] = useState(1.4);
-    const uri = imagePath.startsWith('http')
-      ? imagePath
-      : `file://${imagePath}`;
+// ─── MangaPage ────────────────────────────────────────────────────────────────
+// FIX: Wrapper View şeffaf, backgroundColor sadece Image'e verilmez.
+// Zoom'da container bgColor zaten arka planı kaplar, sayfa arası siyah kalmaz.
+const MangaPage: React.FC<{ imagePath: string }> = React.memo(({ imagePath }) => {
+  const [aspectRatio, setAspectRatio] = useState(1.4);
+  const uri = imagePath.startsWith('http') ? imagePath : `file://${imagePath}`;
 
-    useEffect(() => {
-      Image.getSize(
-        uri,
-        (w, h) => {
-          if (w > 0 && h > 0) setAspectRatio(w / h);
-        },
-        () => {},
-      );
-    }, [uri]);
+  useEffect(() => {
+    Image.getSize(uri, (w, h) => { if (w > 0 && h > 0) setAspectRatio(w / h); }, () => {});
+  }, [uri]);
 
-    return (
+  return (
+    <View style={{ width: SW, height: SW / aspectRatio }}>
       <Image
         source={{ uri }}
-        style={{
-          width: SCREEN_W,
-          height: SCREEN_W / aspectRatio,
-          backgroundColor: '#0a0a0a',
-        }}
+        style={StyleSheet.absoluteFill}
         resizeMode="contain"
-        fadeDuration={100}
+        fadeDuration={80}
       />
-    );
-  },
-);
+    </View>
+  );
+});
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
-const MangaScreen: React.FC<Props> = ({ route }) => {
-  const { mangaLink, localPages } = route.params;
-  const [pages, setPages] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  // ── Zoom state ──────────────────────────────────────────────────────────────
-  const scale = useRef(new Animated.Value(1)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
+// ─── MangaScreen ─────────────────────────────────────────────────────────────
+const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
+  const { mangaLink, localPages, mangaTitle, chapterId, allChapterIds } =
+    route.params as any;
 
-  // Raw refs for math (Animated.Value.__getValue() avoided intentionally)
-  const scaleRef = useRef(1);
-  const txRef = useRef(0);
-  const tyRef = useRef(0);
+  const insets = useSafeAreaInsets();
 
-  // Pinch tracking
-  const lastDist = useRef<number | null>(null);
-  const pinchOriginX = useRef(0);
-  const pinchOriginY = useRef(0);
-
-  // Pan tracking (while zoomed)
-  const panStartX = useRef(0);
-  const panStartY = useRef(0);
-  const panBaseTx = useRef(0);
-  const panBaseTy = useRef(0);
-
-  // Whether FlatList should scroll (only when not zoomed)
+  const [pages,             setPages]             = useState<string[]>([]);
+  const [loading,           setLoading]           = useState(true);
+  const [error,             setError]             = useState<string | null>(null);
+  const [uiVisible,         setUiVisible]         = useState(true);
+  const [settingsOpen,      setSettingsOpen]      = useState(false);
+  const [chaptersOpen,      setChaptersOpen]      = useState(false);
+  const [readMode,          setReadMode]          = useState<ReadMode>('vertical');
+  const [bgMode,            setBgMode]            = useState<BgMode>('black');
+  const [currentPage,       setCurrentPage]       = useState(0);
+  const [pageModePage,      setPageModePage]      = useState(0);
   const [listScrollEnabled, setListScrollEnabled] = useState(true);
 
+  const bgColor = BG_COLORS[bgMode];
+
+  const flatRef      = useRef<FlatList>(null);
+  const scrollThumbY = useRef(new Animated.Value(0)).current;
+  const thumbTrackH  = useRef(0);
+  const uiAnim       = useRef(new Animated.Value(1)).current;
+
+  // Zoom
+  const scale      = useRef(new Animated.Value(1)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const scaleRef   = useRef(1);
+  const txRef      = useRef(0);
+  const tyRef      = useRef(0);
+  const lastDist   = useRef<number | null>(null);
+  const panBaseTx  = useRef(0);
+  const panBaseTy  = useRef(0);
+
+  // Double tap
+  const lastTapTime = useRef(0);
+  const lastTapX    = useRef(0);
+  const lastTapY    = useRef(0);
+
+  // ── UI toggle ──────────────────────────────────────────────────────────────
+  const toggleUi = useCallback(() => {
+    setUiVisible(prev => {
+      const next = !prev;
+      Animated.timing(uiAnim, { toValue: next ? 1 : 0, duration: 200, useNativeDriver: true }).start();
+      return next;
+    });
+  }, [uiAnim]);
+
+  // ── Zoom helpers ───────────────────────────────────────────────────────────
   const clamp = (tx: number, ty: number, sc: number) => {
-    const maxX = Math.max(0, (SCREEN_W * sc - SCREEN_W) / 2);
-    // For Y we allow generous panning since content is tall
-    const maxY = Math.max(
-      0,
-      (SCREEN_H * sc - SCREEN_H) / 2 + SCREEN_H * (sc - 1),
-    );
-    return {
-      x: Math.min(maxX, Math.max(-maxX, tx)),
-      y: Math.min(maxY, Math.max(-maxY, ty)),
-    };
+    const maxX = Math.max(0, (SW * sc - SW) / 2);
+    const maxY = Math.max(0, (SH * sc - SH) / 2 + SH * (sc - 1));
+    return { x: Math.min(maxX, Math.max(-maxX, tx)), y: Math.min(maxY, Math.max(-maxY, ty)) };
   };
 
-  const snapToNormal = () => {
-    scaleRef.current = 1;
-    txRef.current = 0;
-    tyRef.current = 0;
+  const snapToNormal = useCallback(() => {
+    scaleRef.current = 1; txRef.current = 0; tyRef.current = 0;
     Animated.parallel([
-      Animated.spring(scale, {
-        toValue: 1,
-        useNativeDriver: true,
-        bounciness: 4,
-      }),
-      Animated.spring(translateX, {
-        toValue: 0,
-        useNativeDriver: true,
-        bounciness: 4,
-      }),
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        bounciness: 4,
-      }),
+      Animated.spring(scale,      { toValue: 1, useNativeDriver: true, bounciness: 4 }),
+      Animated.spring(translateX, { toValue: 0, useNativeDriver: true, bounciness: 4 }),
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }),
     ]).start(() => setListScrollEnabled(true));
+  }, [scale, translateX, translateY]);
+
+  const doubleTapZoom = (tapX: number, tapY: number) => {
+    if (scaleRef.current > 1.5) {
+      snapToNormal();
+    } else {
+      const ts = 2.5;
+      const c  = clamp(-(tapX - SW / 2) * (ts - 1), -(tapY - SH / 2) * (ts - 1), ts);
+      scaleRef.current = ts; txRef.current = c.x; tyRef.current = c.y;
+      Animated.parallel([
+        Animated.spring(scale,      { toValue: ts,  useNativeDriver: true, bounciness: 3 }),
+        Animated.spring(translateX, { toValue: c.x, useNativeDriver: true, bounciness: 3 }),
+        Animated.spring(translateY, { toValue: c.y, useNativeDriver: true, bounciness: 3 }),
+      ]).start();
+      setListScrollEnabled(false);
+    }
   };
 
+  // ── PanResponder — sadece 2-parmak pinch ve zoomed-pan ────────────────────
+  // TouchableWithoutFeedback KULLANILMIYOR — scroll bozulmasın diye
   const panResponder = useRef(
-    PanResponder.create({
-      // Capture only multi-touch OR panning while zoomed
-      onStartShouldSetPanResponder: e => e.nativeEvent.touches.length === 2,
-      onMoveShouldSetPanResponder: (e, g) => {
-        if (e.nativeEvent.touches.length === 2) return true;
-        // Capture horizontal pan while zoomed (vertical goes to FlatList)
-        if (scaleRef.current > 1.05 && Math.abs(g.dx) > 4) return true;
-        return false;
-      },
-      onPanResponderGrant: e => {
-        const touches = e.nativeEvent.touches;
-        if (touches.length === 2) {
-          lastDist.current = null;
-          // Record pinch origin (midpoint)
-          pinchOriginX.current = (touches[0].pageX + touches[1].pageX) / 2;
-          pinchOriginY.current = (touches[0].pageY + touches[1].pageY) / 2;
-        }
-        panBaseTx.current = txRef.current;
-        panBaseTy.current = tyRef.current;
-        panStartX.current = 0;
-        panStartY.current = 0;
-      },
-      onPanResponderMove: (e, g) => {
-        const touches = e.nativeEvent.touches;
+  PanResponder.create({
+    // ── MOVE ─────────────────────────────────────────────
+    onMoveShouldSetPanResponder: (e, g) => {
+      const t = e.nativeEvent.touches.length;
 
-        if (touches.length === 2) {
-          // ── PINCH ────────────────────────────────────────────────────────
-          const d = dist(
-            { pageX: touches[0].pageX, pageY: touches[0].pageY },
-            { pageX: touches[1].pageX, pageY: touches[1].pageY },
+      if (t === 2) return true;
+
+      if (readMode === 'page' && t === 1) return true;
+
+      if (scaleRef.current > 1.05 && Math.abs(g.dx) > 6) return true;
+
+      return false;
+    },
+
+    onPanResponderGrant: (e) => {
+      panBaseTx.current = txRef.current;
+      panBaseTy.current = tyRef.current;
+
+      if (e.nativeEvent.touches.length === 2) {
+        lastDist.current = null;
+      }
+    },
+
+    onPanResponderMove: (e, g) => {
+      const touches = e.nativeEvent.touches;
+
+      // ZOOM
+      if (touches.length === 2) {
+        const d = dist(
+          { pageX: touches[0].pageX, pageY: touches[0].pageY },
+          { pageX: touches[1].pageX, pageY: touches[1].pageY },
+        );
+
+        if (lastDist.current !== null) {
+          const nextSc = Math.min(
+            MAX_SCALE,
+            Math.max(MIN_SCALE, scaleRef.current * (d / lastDist.current))
           );
 
-          if (lastDist.current !== null) {
-            const factor = d / lastDist.current;
-            const nextSc = Math.min(
-              MAX_SCALE,
-              Math.max(MIN_SCALE, scaleRef.current * factor),
-            );
-            scaleRef.current = nextSc;
-            scale.setValue(nextSc);
+          scaleRef.current = nextSc;
+          scale.setValue(nextSc);
 
-            if (nextSc <= 1.01) {
-              txRef.current = 0;
-              tyRef.current = 0;
-              translateX.setValue(0);
-              translateY.setValue(0);
-            }
-            setListScrollEnabled(nextSc <= 1.01);
+          setListScrollEnabled(nextSc <= 1.01);
+        }
+
+        lastDist.current = d;
+        return;
+      }
+
+      // PAGE MODE → burada hiçbir şey yapma (AMA ENGELLEME DE)
+      // ❗ önemli: return yok
+      if (readMode === 'page') {
+        return;
+      }
+
+      // PAN (zoom)
+      if (scaleRef.current > 1.05) {
+        const c = clamp(
+          panBaseTx.current + g.dx,
+          panBaseTy.current + g.dy,
+          scaleRef.current
+        );
+
+        txRef.current = c.x;
+        tyRef.current = c.y;
+
+        translateX.setValue(c.x);
+        translateY.setValue(c.y);
+      }
+    },
+
+    // ── RELEASE ─────────────────────────────────────────
+    onPanResponderRelease: (e, g) => {
+      lastDist.current = null;
+
+      if (readMode === 'page' && scaleRef.current <= 1.05) {
+        const swipeThreshold = 30; // daha hassas
+
+        if (g.dx < -swipeThreshold) {
+          goToPage(pageModePage + 1);
+        } else if (g.dx > swipeThreshold) {
+          goToPage(pageModePage - 1);
+        }
+      }
+
+      if (scaleRef.current < 1.1) {
+        snapToNormal();
+      }
+    },
+
+    onPanResponderTerminate: () => {
+      lastDist.current = null;
+    },
+  })
+).current;
+
+  // ── Double tap — onTouchEnd üzerinden, scroll bozulmadan ──────────────────
+  const handleTouchEnd = (e: any) => {
+    const { pageX, pageY } = e.nativeEvent;
+    const now = Date.now();
+    if (
+      now - lastTapTime.current < 280 &&
+      Math.abs(pageX - lastTapX.current) < 60 &&
+      Math.abs(pageY - lastTapY.current) < 60
+    ) {
+      doubleTapZoom(pageX, pageY);
+      lastTapTime.current = 0;
+    } else {
+      lastTapTime.current = now;
+      lastTapX.current    = pageX;
+      lastTapY.current    = pageY;
+    }
+  };
+
+  // ── Save / restore ─────────────────────────────────────────────────────────
+  const posKey = `manga_pos_${mangaLink}`;
+  const savePosition = useCallback(async (idx: number) => {
+    try { await AsyncStorage.setItem(posKey, String(idx)); } catch {}
+  }, [posKey]);
+
+  const restorePosition = useCallback(async (count: number) => {
+    try {
+      const saved = await AsyncStorage.getItem(posKey);
+      if (saved) {
+        const idx = Math.min(Number(saved), count - 1);
+        setTimeout(() => {
+          if (readMode === 'vertical') {
+            flatRef.current?.scrollToOffset({
+              offset: idx * SH,
+              animated: false,
+            });
+          } else {
+            flatRef.current?.scrollToIndex({
+              index: idx,
+              animated: false,
+            });
           }
-          lastDist.current = d;
-        } else if (scaleRef.current > 1.05) {
-          // ── PAN while zoomed ─────────────────────────────────────────────
-          const nx = panBaseTx.current + g.dx;
-          const ny = panBaseTy.current + g.dy;
-          const c = clamp(nx, ny, scaleRef.current);
-          txRef.current = c.x;
-          tyRef.current = c.y;
-          translateX.setValue(c.x);
-          translateY.setValue(c.y);
-        }
-      },
-      onPanResponderRelease: () => {
-        lastDist.current = null;
-        if (scaleRef.current < 1.1) {
-          snapToNormal();
-        }
-      },
-      onPanResponderTerminate: () => {
-        lastDist.current = null;
-      },
-    }),
-  ).current;
 
-  // ── Data loading ─────────────────────────────────────────────────────────────
+          setCurrentPage(idx);
+          setPageModePage(idx);
+        }, 350);
+      }
+    } catch {}
+  }, [posKey]);
+
+  // ── Data ───────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (localPages && localPages.length > 0) {
-      setPages(localPages);
-      setLoading(false);
-      return;
+    if (localPages?.length) {
+      setPages(localPages); setLoading(false); restorePosition(localPages.length); return;
     }
     (async () => {
       try {
@@ -217,94 +320,446 @@ const MangaScreen: React.FC<Props> = ({ route }) => {
         if (result.error || result.pages.length === 0) {
           setError(result.error ?? 'Sayfa bulunamadı');
         } else {
-          setPages(result.pages);
+          setPages(result.pages); restorePosition(result.pages.length);
         }
-      } catch (e) {
-        setError(String(e));
-      } finally {
-        setLoading(false);
-      }
+      } catch (e) { setError(String(e)); }
+      finally     { setLoading(false); }
     })();
   }, [mangaLink, localPages]);
 
+// ── Scroll thumb ───────────────────────────────────────────────────────────
+const updateThumb = (offset: number, contentH: number, viewH: number) => {
+  if (contentH <= viewH || thumbTrackH.current <= 0) return;
+
+  const maxScroll = contentH - viewH;
+  const ratio = Math.min(1, Math.max(0, offset / maxScroll));
+
+  scrollThumbY.setValue(ratio * thumbTrackH.current);
+};
+
+const handleScroll = (e: any) => {
+  const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+
+  // 🔥 DOĞRU index hesaplama (ekran yüksekliğine göre)
+  const pageHeight = layoutMeasurement.height;
+  const idx = Math.max(
+    0,
+    Math.min(pages.length - 1, Math.round(contentOffset.y / pageHeight))
+  );
+
+  if (idx !== currentPage) {
+    setCurrentPage(idx);
+    savePosition(idx);
+  }
+
+  // 🔥 Thumb update (daha stabil)
+  updateThumb(contentOffset.y, contentSize.height, layoutMeasurement.height);
+};
+
+  // ── Chapter nav ────────────────────────────────────────────────────────────
+  const allIds: string[] = allChapterIds ?? [];
+  const currentChIdx     = chapterId ? allIds.indexOf(chapterId) : -1;
+
+  const goChapter = (dir: 'prev' | 'next') => {
+    if (currentChIdx === -1 || !allIds.length) return;
+    const target = dir === 'next' ? currentChIdx - 1 : currentChIdx + 1;
+    if (target < 0 || target >= allIds.length) return;
+    navigation.replace('Manga', { mangaLink: allIds[target], mangaTitle, chapterId: allIds[target], allChapterIds: allIds } as any);
+  };
+
+  // ── PAGE NAV ───────────────────────────────────────────────────────────────
+  const goToPage = (idx: number) => {
+  const next = Math.max(0, Math.min(pages.length - 1, idx));
+
+  setPageModePage(next);
+  setCurrentPage(next);
+  savePosition(next);
+
+  // ❌ FlatList scroll'u sadece vertical mod için olmalı
+  if (readMode !== 'page') {
+    flatRef.current?.scrollToIndex({
+      index: next,
+      animated: true,
+    });
+  }
+};
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   const renderItem = useCallback(
     ({ item }: { item: string }) => <MangaPage imagePath={item} />,
     [],
   );
   const keyExtractor = useCallback((_: string, i: number) => i.toString(), []);
 
-  // ── Render states ─────────────────────────────────────────────────────────────
   if (loading)
     return (
-      <View style={s.centered}>
-        <ActivityIndicator size="large" color="#4A90E2" />
+      <View style={[s.centered, { backgroundColor: bgColor }]}>
+        <ActivityIndicator size="large" color={C.gold} />
         <Text style={s.loadingText}>Yükleniyor...</Text>
       </View>
     );
 
   if (error)
     return (
-      <View style={s.centered}>
-        <Text style={s.errorEmoji}>⚠️</Text>
+      <View style={[s.centered, { backgroundColor: bgColor }]}>
+        <Text style={{ fontSize: 40 }}>⚠️</Text>
         <Text style={s.errorText}>{error}</Text>
       </View>
     );
 
+  const isPage  = readMode === 'page';
+
   return (
-    // Outer view captures pinch gestures
-    <View style={s.container} {...panResponder.panHandlers}>
-      <Animated.View
-        style={[
-          s.zoomLayer,
-          { transform: [{ scale }, { translateX }, { translateY }] },
-        ]}
-        // Don't intercept touches here — parent panResponder handles it
-        pointerEvents="box-none"
+    // bgColor burada — zoom'da sayfa arası bu renk görünür, siyah kalmaz
+    <View style={[s.container, { backgroundColor: bgColor }]}>
+      <StatusBar hidden={!uiVisible} />
+
+      {/* ── Gesture katmanı: pinch + double-tap, TouchableWithoutFeedback YOK ─ */}
+      <View
+        style={StyleSheet.absoluteFill}
+        {...panResponder.panHandlers}
+        onTouchEnd={handleTouchEnd}
       >
-        <FlatList
-          data={pages}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
-          scrollEnabled={listScrollEnabled}
-          removeClippedSubviews
-          initialNumToRender={3}
-          maxToRenderPerBatch={2}
-          updateCellsBatchingPeriod={60}
-          windowSize={7}
-          showsVerticalScrollIndicator={false}
-          overScrollMode="never"
-          bounces={false}
-          directionalLockEnabled
+        <Animated.View
+          style={[s.zoomLayer, { transform: [{ scale }, { translateX }, { translateY }] }]}
+          pointerEvents="box-none"
+        >
+          {isPage ? (
+            <FlatList
+              ref={flatRef}
+              data={pages}
+              keyExtractor={keyExtractor}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <View style={{ width: SW, height: SH }}>
+                  <Image
+                    source={{
+                      uri: item.startsWith('http') ? item : `file://${item}`,
+                    }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="contain"
+                  />
+                </View>
+              )}
+              onMomentumScrollEnd={(e) => {
+                const idx = Math.round(e.nativeEvent.contentOffset.x / SW);
+                setPageModePage(idx);
+                setCurrentPage(idx);
+              }}
+            />
+          ) : (
+            <FlatList
+              ref={flatRef}
+              data={pages}
+              keyExtractor={keyExtractor}
+              renderItem={renderItem}
+              scrollEnabled={listScrollEnabled}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+              onLayout={e => { thumbTrackH.current = e.nativeEvent.layout.height - THUMB_H; }}
+              removeClippedSubviews
+              initialNumToRender={3}
+              maxToRenderPerBatch={2}
+              updateCellsBatchingPeriod={60}
+              windowSize={7}
+              showsVerticalScrollIndicator={false}
+              overScrollMode="never"
+              bounces={false}
+              directionalLockEnabled
+            />
+          )}
+        </Animated.View>
+      </View>
+
+      {/* ── Scroll thumb ───────────────────────────────────────────────────── */}
+      {readMode === 'vertical' && pages.length > 0 && (
+        <Animated.View
+          style={[s.thumb, { transform: [{ translateY: scrollThumbY }] }]}
+          pointerEvents="none"
         />
+      )}
+
+      {/* ── TOP BAR ────────────────────────────────────────────────────────── */}
+      <Animated.View
+        style={[s.topBar, { opacity: uiAnim, paddingTop: insets.top + 4 }]}
+        pointerEvents={uiVisible ? 'box-none' : 'none'}
+      >
+        <TouchableOpacity style={s.topBtn} onPress={() => navigation.goBack()}>
+          <Text style={s.topBtnTxt}>‹</Text>
+        </TouchableOpacity>
+
+        <Text style={s.topTitle} numberOfLines={1}>{mangaTitle ?? 'Manga'}</Text>
+
+        <View style={s.topRight}>
+          {/* 👁 UI Toggle */}
+          <TouchableOpacity style={s.topBtn} onPress={toggleUi}>
+            <Text style={s.topBtnTxt}>👁</Text>
+          </TouchableOpacity>
+          {/* Ayarlar */}
+          <TouchableOpacity style={s.topBtn} onPress={() => setSettingsOpen(true)}>
+            <Text style={s.topBtnTxt}>⚙</Text>
+          </TouchableOpacity>
+        </View>
       </Animated.View>
+
+      {/* ── UI KAPALI: sağ üstte kalıcı küçük toggle butonu ────────────────── */}
+      {!uiVisible && (
+        <TouchableOpacity
+          style={[s.floatingToggle, { top: insets.top + 8 }]}
+          onPress={toggleUi}
+          activeOpacity={0.75}
+        >
+          <Text style={s.floatingToggleTxt}>☰</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ── BOTTOM BAR ─────────────────────────────────────────────────────── */}
+      <Animated.View
+        style={[s.bottomBar, { opacity: uiAnim, paddingBottom: insets.bottom + 4 }]}
+        pointerEvents={uiVisible ? 'box-none' : 'none'}
+      >
+        <Text style={s.pageInfo}>{currentPage + 1} / {pages.length}</Text>
+
+        <View style={s.bottomRow}>
+          <TouchableOpacity
+            style={[s.navBtn, currentChIdx <= 0 && s.navBtnDisabled]}
+            onPress={() => goChapter('next')}
+            disabled={currentChIdx <= 0}
+          >
+            <Text style={s.navBtnTxt}>‹ Önceki</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={s.chapBtn} onPress={() => setChaptersOpen(true)}>
+            <Text style={s.chapBtnTxt}>☰ Bölümler</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[s.navBtn, currentChIdx >= allIds.length - 1 && s.navBtnDisabled]}
+            onPress={() => goChapter('prev')}
+            disabled={currentChIdx >= allIds.length - 1}
+          >
+            <Text style={s.navBtnTxt}>Sonraki ›</Text>
+          </TouchableOpacity>
+        </View>
+        
+
+      </Animated.View>
+
+      {/* ── Immersive sayfa numarası ───────────────────────────────────────── */}
+      {!uiVisible && (
+        <View style={[s.miniInfo, { bottom: insets.bottom + 8 }]} pointerEvents="none">
+          <Text style={s.miniInfoTxt}>{currentPage + 1} / {pages.length}</Text>
+        </View>
+      )}
+
+      {/* ── SETTINGS MODAL ─────────────────────────────────────────────────── */}
+      <Modal visible={settingsOpen} transparent animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
+        <TouchableWithoutFeedback onPress={() => setSettingsOpen(false)}>
+          <View style={s.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[s.sheet, { paddingBottom: insets.bottom + 16 }]}>
+                <View style={s.sheetHandle} />
+                <Text style={s.sheetTitle}>Okuma Ayarları</Text>
+
+                <Text style={s.settingLabel}>OKUMA MODU</Text>
+                <View style={s.optRow}>
+                  {(['vertical',  'page'] as ReadMode[]).map(m => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[s.optBtn, readMode === m && s.optBtnActive]}
+                      onPress={() => { setReadMode(m); setSettingsOpen(false); }}
+                    >
+                      <Text style={[s.optBtnTxt, readMode === m && s.optBtnTxtActive]}>
+                        {m === 'vertical' ? '📜 Dikey' : '📖 Sayfa'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={s.settingLabel}>ARKA PLAN</Text>
+                <View style={s.optRow}>
+                  {(['black', 'gray', 'sepia'] as BgMode[]).map(b => (
+                    <TouchableOpacity
+                      key={b}
+                      style={[s.optBtn, { backgroundColor: BG_COLORS[b], borderWidth: 2 }, bgMode === b && s.optBtnActive]}
+                      onPress={() => setBgMode(b)}
+                    >
+                      <Text style={[s.optBtnTxt, { color: '#fff' }]}>
+                        {b === 'black' ? '⬛ Siyah' : b === 'gray' ? '▪ Gri' : '📜 Sepya'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={s.settingLabel}>KISAYOLLAR</Text>
+                <View style={s.hintBox}>
+                  <Text style={s.hintTxt}>👆 Çift dokun → Zoom in/out</Text>
+                  <Text style={s.hintTxt}>🤏 İki parmak → Yakınlaştır/Uzaklaştır</Text>
+                  <Text style={s.hintTxt}>☰ Sağ üst → UI göster / gizle</Text>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* ── CHAPTERS MODAL ─────────────────────────────────────────────────── */}
+      <Modal visible={chaptersOpen} transparent animationType="slide" onRequestClose={() => setChaptersOpen(false)}>
+        <TouchableWithoutFeedback onPress={() => setChaptersOpen(false)}>
+          <View style={s.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[s.sheet, s.sheetTall, { paddingBottom: insets.bottom + 16 }]}>
+                <View style={s.sheetHandle} />
+                <Text style={s.sheetTitle}>Bölümler</Text>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {allIds.map((id, i) => {
+                    const isCurrent = id === chapterId;
+                    return (
+                      <TouchableOpacity
+                        key={id}
+                        style={[s.chapRow, isCurrent && s.chapRowActive]}
+                        onPress={() => {
+                          setChaptersOpen(false);
+                          if (!isCurrent)
+                            navigation.replace('Manga', { mangaLink: id, mangaTitle, chapterId: id, allChapterIds: allIds } as any);
+                        }}
+                      >
+                        <Text style={[s.chapRowTxt, isCurrent && s.chapRowTxtActive]}>
+                          Bölüm {allIds.length - i}
+                        </Text>
+                        {isCurrent && <Text style={s.chapRowBadge}>Şu an</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </View>
   );
 };
 
 export default MangaScreen;
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+const THUMB_H   = 48;
+const THUMB_W   = 4;
+const TOP_BAR_H = 52;
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-    overflow: 'hidden',
+  container:   { flex: 1, overflow: 'hidden' },
+  zoomLayer:   { flex: 1 },
+  centered:    { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  loadingText: { color: C.inkMid, fontSize: 14 },
+  errorText:   { color: '#e74c3c', fontSize: 14, textAlign: 'center', paddingHorizontal: 32 },
+
+  thumb: {
+    position: 'absolute', right: 3, top: TOP_BAR_H,
+    width: THUMB_W, height: THUMB_H, borderRadius: THUMB_W / 2,
+    backgroundColor: 'rgba(212,168,67,0.6)',
   },
-  zoomLayer: {
-    flex: 1,
+
+  topBar: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingBottom: 10,
+    backgroundColor: 'rgba(0,0,0,0.75)', zIndex: 30,
   },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0a0a0a',
-    gap: 12,
+  topRight:  { flexDirection: 'row', gap: 6 },
+  topBtn: {
+    width: 38, height: 38, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.09)',
+    justifyContent: 'center', alignItems: 'center',
   },
-  loadingText: { color: '#555', fontSize: 14 },
-  errorEmoji: { fontSize: 40 },
-  errorText: {
-    color: '#e74c3c',
-    fontSize: 14,
-    textAlign: 'center',
-    paddingHorizontal: 32,
+  topBtnTxt: { color: C.ink, fontSize: 20, fontWeight: '700' },
+  topTitle:  { flex: 1, color: C.ink, fontSize: 14, fontWeight: '700', textAlign: 'center', marginHorizontal: 6 },
+
+  // UI kapalıyken sağ üstte kalıcı buton
+  floatingToggle: {
+    position: 'absolute', right: 12, zIndex: 50,
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  floatingToggleTxt: { color: 'rgba(255,255,255,0.7)', fontSize: 17 },
+
+  bottomBar: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    paddingTop: 10, paddingHorizontal: 14, zIndex: 30,
+  },
+  pageInfo: {
+    color: C.inkMid, fontSize: 11, textAlign: 'center',
+    marginBottom: 8, fontWeight: '700', letterSpacing: 1,
+  },
+  bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between' },
+
+  navBtn: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  navBtnDisabled: { opacity: 0.25 },
+  navBtnTxt:      { color: C.ink, fontSize: 13, fontWeight: '700' },
+
+  chapBtn: {
+    flex: 1, paddingVertical: 9, borderRadius: 10,
+    backgroundColor: C.gold + '22',
+    borderWidth: 1, borderColor: C.gold + '55', alignItems: 'center',
+  },
+  chapBtnTxt: { color: C.gold, fontSize: 13, fontWeight: '800' },
+
+  dotRow:    { flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 8, flexWrap: 'wrap' },
+  dot:       { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.22)' },
+  dotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.gold },
+
+  miniInfo: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 20 },
+  miniInfoTxt: {
+    color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+  },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: '#13131C',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    borderTopWidth: 1, borderColor: C.line,
+    paddingHorizontal: 20, paddingTop: 14,
+    maxHeight: SH * 0.55,
+  },
+  sheetTall:   { maxHeight: SH * 0.75 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.line, alignSelf: 'center', marginBottom: 16 },
+  sheetTitle:  { color: C.ink, fontSize: 17, fontWeight: '800', textAlign: 'center', marginBottom: 20 },
+
+  settingLabel: { color: C.inkMid, fontSize: 10, fontWeight: '900', letterSpacing: 2, marginBottom: 10, marginTop: 4 },
+  optRow: { flexDirection: 'row', gap: 8, marginBottom: 18, flexWrap: 'wrap' },
+  optBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1, borderColor: C.line, alignItems: 'center',
+  },
+  optBtnActive:    { borderColor: C.gold, backgroundColor: C.gold + '18' },
+  optBtnTxt:       { color: C.inkMid, fontSize: 13, fontWeight: '700' },
+  optBtnTxtActive: { color: C.gold },
+  hintBox: { backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 12, gap: 6 },
+  hintTxt: { color: C.inkMid, fontSize: 12 },
+
+  chapRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.line,
+  },
+  chapRowActive:    { backgroundColor: C.gold + '12', marginHorizontal: -20, paddingHorizontal: 20 },
+  chapRowTxt:       { color: C.ink, fontSize: 14, fontWeight: '600' },
+  chapRowTxtActive: { color: C.gold, fontWeight: '800' },
+  chapRowBadge: {
+    color: C.gold, fontSize: 10, fontWeight: '800',
+    backgroundColor: C.gold + '22', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
   },
 });
