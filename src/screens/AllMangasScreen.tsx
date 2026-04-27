@@ -60,6 +60,8 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
 /*const [editingManga, setEditingManga] = useState<string | null>(null);
   const [editTitle,    setEditTitle]    = useState('');
   const [editCover,    setEditCover]    = useState(''); */
+  const [oldTitle, setOldTitle] = useState('');
+  const [oldCover, setOldCover] = useState('');
 
   const menuRefs = useRef<Map<string, View | null>>(new Map());
  
@@ -329,7 +331,17 @@ const loadMangas = useCallback(async () => {
           ]}>
             <TouchableOpacity
               style={s.dropdownItem}
-              onPress={() => openEdit(dropdown.manga)}
+              onPress={() => {
+                closeMenu();
+
+                setOldTitle(dropdown.manga.title);
+                setOldCover(dropdown.manga.cover || '');
+
+                openEdit({
+                  title: dropdown.manga.title,
+                  cover: dropdown.manga.cover,
+                });
+              }}
               activeOpacity={0.75}
             >
               <Text style={s.icon}>✏️</Text>
@@ -346,52 +358,143 @@ const loadMangas = useCallback(async () => {
         </Modal>
       )}
 {/* ── EDIT MODAL ────────────────────────────────────────────────────── */}
-{/*       
-      {editVisible && (
-        <Modal
-          visible
-          transparent
-          animationType="fade"
-          onRequestClose={() => setEditVisible(false)}
+      <Modal visible={editVisible} transparent animationType="slide">
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+            backgroundColor: 'rgba(0,0,0,0.6)',
+          }}
         >
-          <TouchableWithoutFeedback onPress={() => setEditVisible(false)}>
-            <View style={s.modalOverlay}>
-              <TouchableWithoutFeedback>
-                <View style={s.modalBox}>
-                  <Text style={s.modalTitle}>Manga Adı Düzenle</Text>
+          <View
+            style={{
+              backgroundColor: '#1C1C28',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              padding: 20,
+            }}
+          >
+            {/* Handle */}
+            <View
+              style={{
+                width: 40,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: '#444',
+                alignSelf: 'center',
+                marginBottom: 20,
+              }}
+            />
 
-                  <TextInput
-                    value={editTitle}
-                    onChangeText={setEditTitle}
-                    style={s.modalInput}
-                    placeholder="Yeni isim"
-                    placeholderTextColor="#888"
-                  />
+            <Text style={{ color: '#fff', fontSize: 18, textAlign: 'center' }}>
+              Manga Düzenle
+            </Text>
 
-                  <TextInput
-                    value={editCover}
-                    onChangeText={setEditCover}
-                    style={[s.modalInput, { marginTop: 10 }]}
-                    placeholder="Kapak URL"
-                    placeholderTextColor="#888"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
+            {/* 🔥 ESKİ DEĞERLER */}
+            <View style={{ marginTop: 16 }}>
+              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>
+                Mevcut İsim
+              </Text>
+              <Text style={{ color: '#fff', marginBottom: 10, textAlign: 'center' }}>
+                {oldTitle}
+              </Text>
 
-                  <View style={s.modalActions}>
-                    <TouchableOpacity onPress={() => setEditVisible(false)}>
-                      <Text style={{ color: '#aaa' }}>İptal</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={saveEdit}>
-                      <Text style={{ color: AMBER, fontWeight: '700' }}>Kaydet</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
+              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>
+                Mevcut Kapak
+              </Text>
+
+              {oldCover ? (
+                <Image
+                  source={{ uri: oldCover }}
+                  style={{
+                    width: 90,
+                    height: 130,
+                    borderRadius: 10,
+                    alignSelf: 'center',
+                    marginBottom: 10,
+                  }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={{ color: '#aaa', textAlign: 'center', marginBottom: 10 }}>
+                  -
+                </Text>
+              )}
             </View>
-          </TouchableWithoutFeedback>
-        </Modal>
-      )} */}
+
+            {/* 🔥 YENİ PREVIEW */}
+            {!!editCover && (
+              <Image
+                source={{ uri: editCover }}
+                style={{
+                  width: 90,
+                  height: 130,
+                  borderRadius: 10,
+                  alignSelf: 'center',
+                  marginBottom: 10,
+                }}
+                resizeMode="cover"
+              />
+            )}
+
+            {/* INPUTLAR */}
+            <TextInput
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="Yeni isim"
+              placeholderTextColor="#666"
+              style={{
+                backgroundColor: '#2A2A35',
+                color: '#fff',
+                padding: 12,
+                borderRadius: 12,
+                marginBottom: 10,
+                textAlign: 'center',
+              }}
+            />
+
+            <TextInput
+              value={editCover}
+              onChangeText={setEditCover}
+              placeholder="Yeni kapak URL"
+              placeholderTextColor="#666"
+              style={{
+                backgroundColor: '#2A2A35',
+                color: '#fff',
+                padding: 12,
+                borderRadius: 12,
+                textAlign: 'center',
+              }}
+            />
+
+            {/* BUTTONS */}
+            <TouchableOpacity
+              onPress={saveEdit}
+              style={{
+                marginTop: 20,
+                backgroundColor: '#D4A843',
+                padding: 14,
+                borderRadius: 12, 
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#000', fontWeight: '800' }}>
+                Kaydet
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setEditVisible(false)}
+              style={{
+                marginTop: 10,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#aaa' }}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
