@@ -18,6 +18,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { deleteManga, getMangas, updateManga } from '../services/mangaStorageService';
+import { useMangaActions } from '../actions/useMangaActions';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AllMangas'>;
 
@@ -53,32 +54,45 @@ interface DropdownPos {
 const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
   const [mangas,       setMangas]       = useState<Manga[]>([]);
   const [query,        setQuery]        = useState('');
-  const [menuVisible,  setMenuVisible]  = useState<string | null>(null);
+//const [menuVisible,  setMenuVisible]  = useState<string | null>(null);
   const [dropdown,     setDropdown]     = useState<DropdownPos | null>(null);
-  const [editVisible,  setEditVisible]  = useState(false);
-  const [editingManga, setEditingManga] = useState<string | null>(null);
+/*   const [editVisible,  setEditVisible]  = useState(false); */
+/*const [editingManga, setEditingManga] = useState<string | null>(null);
   const [editTitle,    setEditTitle]    = useState('');
-  const [editCover,    setEditCover]    = useState('');
+  const [editCover,    setEditCover]    = useState(''); */
 
   const menuRefs = useRef<Map<string, View | null>>(new Map());
-
+ 
   // ── Storage'dan yükle ────────────────────────────────────────────────────────
-  const loadMangas = useCallback(async () => {
-    try {
-      const data = await getMangas();
-      // getMangas'ın döndürdüğü veriyi readChapters ile zenginleştir
-      const enriched = (data as any[]).map((m: any) => ({
-        ...m,
-        readChapters: m.chapters?.filter((c: any) => c.read).length ?? 0,
-        downloadedChapters: m.chapters?.filter((c: any) => c.downloaded).length ?? (m.downloadedChapters ?? 0),
-        totalChapters: m.chapters?.length ?? (m.totalChapters ?? 0),
-      }));
+const loadMangas = useCallback(async () => {
+  try {
+    const data = await getMangas();
+
+    const enriched = (data as any[]).map((m: any) => ({
+      ...m,
+      readChapters: m.chapters?.filter((c: any) => c.read).length ?? 0,
+      downloadedChapters: m.chapters?.filter((c: any) => c.downloaded).length ?? (m.downloadedChapters ?? 0),
+      totalChapters: m.chapters?.length ?? (m.totalChapters ?? 0),
+    }));
+
       setMangas(enriched as Manga[]);
     } catch (e) {
       console.error('loadMangas error:', e);
     }
   }, []);
+   const {
+    editVisible,
+    setEditVisible,
+    editTitle,
+    setEditTitle,
+    editCover,
+    setEditCover,
+    openEdit,
+    saveEdit,
+    handleDeleteWholeManga,
+  } = useMangaActions(loadMangas);
 
+  
   useEffect(() => { loadMangas(); }, [loadMangas]);
 
   useFocusEffect(useCallback(() => { loadMangas(); }, [loadMangas]));
@@ -100,10 +114,10 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
 
   const closeMenu = () => {
     setDropdown(null);
-    setMenuVisible(null);
+    //setMenuVisible(null);
   };
 
-  // ── Edit ─────────────────────────────────────────────────────────────────────
+/*   // ── Edit ─────────────────────────────────────────────────────────────────────
   const handleEdit = (manga: Manga) => {
     closeMenu();
     setEditingManga(manga.title);
@@ -175,7 +189,7 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
     ],
     { cancelable: true }
   );
-};
+}; */
 
   // ── Render item ──────────────────────────────────────────────────────────────
   const renderItem = ({ item }: { item: Manga }) => {
@@ -315,7 +329,7 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
           ]}>
             <TouchableOpacity
               style={s.dropdownItem}
-              onPress={() => handleEdit(dropdown.manga)}
+              onPress={() => openEdit(dropdown.manga)}
               activeOpacity={0.75}
             >
               <Text style={s.icon}>✏️</Text>
@@ -323,7 +337,7 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
 
             <TouchableOpacity
               style={s.dropdownItem}
-              onPress={() => handleDelete(dropdown.manga.title)}
+              onPress={() => handleDeleteWholeManga(dropdown.manga.title)}
               activeOpacity={0.75}
             >
               <Text style={[s.icon, { color: '#ff6b6b' }]}>🗑</Text>
@@ -331,8 +345,8 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
           </View>
         </Modal>
       )}
-
-      {/* ── EDIT MODAL ────────────────────────────────────────────────────── */}
+{/* ── EDIT MODAL ────────────────────────────────────────────────────── */}
+{/*       
       {editVisible && (
         <Modal
           visible
@@ -377,7 +391,7 @@ const AllMangasScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </TouchableWithoutFeedback>
         </Modal>
-      )}
+      )} */}
     </View>
   );
 };

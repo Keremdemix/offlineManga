@@ -1,5 +1,5 @@
 // screens/ChaptersScreen.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState,useLayoutEffect } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { downloadChapter, DownloadProgress } from '../actions/downloadActions';
 import { extractChapterNumber } from '../utils/chapterUtils';
+import { useMangaActions } from '../actions/useMangaActions';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chapters'>;
 
@@ -637,6 +638,21 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      title: mangaTitle,
+
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => setMenuVisible(true)}
+          style={{ marginRight: 16 }}
+        >
+          <Text style={{ fontSize: 22, color: '#fff' }}>⋯</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, mangaTitle]);
   const [loading, setLoading] = useState(true);
   const [progresses, setProgresses] = useState<
     Record<string, DownloadProgress>
@@ -687,6 +703,7 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
       return next;
     });
   };
+  
 
   const enterSelectMode = (id: string) => {
     setSelectMode(true);
@@ -740,6 +757,19 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
       setLoading(false);
     }
   }, [mangaTitle]);
+    const {
+    editVisible,
+    setEditVisible,
+    editTitle,
+    setEditTitle,
+    editCover,
+    setEditCover,
+    openEdit,
+    saveEdit,
+    handleDeleteWholeManga,
+    oldTitle,
+    oldCover
+  } = useMangaActions(loadChapters);
 
   useEffect(() => {
     loadChapters();
@@ -1092,6 +1122,220 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
         onClose={() => setAddVisible(false)}
         onAdd={handleAddChapter}
       />
+      <Modal visible={menuVisible} transparent animationType="fade">
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'flex-end',
+          }}
+          activeOpacity={1}
+          onPress={() => setMenuVisible(false)}
+        >
+          <View
+            style={{
+              backgroundColor: '#1C1C28',
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: 16,
+            }}
+          >
+            {/* Handle */}
+            <View
+              style={{
+                width: 40,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: '#444',
+                alignSelf: 'center',
+                marginBottom: 16,
+              }}
+            />
+
+            {/* Edit */}
+            <TouchableOpacity
+              style={{
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: 'rgba(255,255,255,0.05)',
+                alignItems: 'center', // 🔥 EKLE
+              }}
+              onPress={() => {
+                setMenuVisible(false);
+                openEdit({
+                  title: mangaTitle,
+                  cover: coverUrl ?? '',
+                } as any);
+              }}
+            >
+              <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center' }}>
+                ✏️ Manga Düzenle
+              </Text>
+            </TouchableOpacity>
+
+            {/* Delete */}
+            <TouchableOpacity
+              style={{
+                paddingVertical: 14,
+                alignItems: 'center', // 🔥
+              }}
+              onPress={() => {
+                setMenuVisible(false);
+                handleDeleteWholeManga(mangaTitle);
+              }}
+            >
+              <Text style={{ color: '#F87171', fontSize: 16, textAlign: 'center' }}>
+                🗑  Sil
+              </Text>
+            </TouchableOpacity>
+
+            {/* Cancel */}
+            <TouchableOpacity
+              style={{
+                marginTop: 10,
+                paddingVertical: 14,
+                borderRadius: 12,
+                backgroundColor: '#2A2A35',
+                alignItems: 'center',
+              }}
+              onPress={() => setMenuVisible(false)}
+            >
+              <Text style={{ color: '#aaa', fontSize: 15 }}>
+                İptal
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+      
+      <Modal visible={editVisible} transparent animationType="slide">
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'flex-end',
+            backgroundColor: 'rgba(0,0,0,0.6)',
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: '#1C1C28', 
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              padding: 20,
+            }}
+          >
+            {/* Handle */}
+            <View
+              style={{
+                width: 40,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: '#444',
+                alignSelf: 'center',
+                marginBottom: 20,
+              }}
+            />
+
+            <Text style={{ color: '#fff', fontSize: 18, textAlign: 'center' }}>
+              Manga Düzenle
+            </Text>
+
+            {/* 🔥 ESKİ BİLGİLER */}
+            <View style={{ marginTop: 16 }}>
+              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>
+                Mevcut İsim
+              </Text>
+              <Text
+                style={{
+                  color: '#fff',
+                  marginBottom: 10,
+                  textAlign: 'center',
+                  fontWeight: '600',
+                }}
+              >
+                {oldTitle}
+              </Text>
+
+              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>
+                Kapak Önizleme
+              </Text>
+
+              {/* 🔥 RESİM PREVIEW */}
+              <View style={{ alignItems: 'center', marginVertical: 12 }}>
+                <Image
+                  source={{
+                    uri:
+                      editCover?.trim() ||
+                      oldCover ||
+                      'https://via.placeholder.com/150',
+                  }}
+                  style={{
+                    width: 120,
+                    height: 160,
+                    borderRadius: 12,
+                    backgroundColor: '#222',
+                  }}
+                  resizeMode="cover"
+                />
+              </View>
+            </View>
+
+            {/* 🔥 INPUTLAR */}
+            <TextInput
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="Yeni isim"
+              placeholderTextColor="#666"
+              style={{
+                backgroundColor: '#2A2A35',
+                color: '#fff',
+                padding: 12,
+                borderRadius: 12,
+                marginBottom: 10,
+              }}
+            />
+
+            <TextInput
+              value={editCover}
+              onChangeText={setEditCover}
+              placeholder="Yeni kapak URL"
+              placeholderTextColor="#666"
+              style={{
+                backgroundColor: '#2A2A35',
+                color: '#fff',
+                padding: 12,
+                borderRadius: 12,
+              }}
+            />
+
+            {/* 🔥 BUTTONS */}
+            <TouchableOpacity
+              onPress={saveEdit}
+              style={{
+                marginTop: 20,
+                backgroundColor: '#D4A843',
+                padding: 14,
+                borderRadius: 12,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#000', fontWeight: '800' }}>
+                Kaydet
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setEditVisible(false)}
+              style={{
+                marginTop: 10,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#aaa' }}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1288,4 +1532,5 @@ addTopTxt: {
   fontWeight: '800',
   color: T.bg0,
 },
+
 });
