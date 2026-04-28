@@ -359,136 +359,45 @@ const loadMangas = useCallback(async () => {
       )}
 {/* ── EDIT MODAL ────────────────────────────────────────────────────── */}
       <Modal visible={editVisible} transparent animationType="slide">
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'flex-end',
-            backgroundColor: 'rgba(0,0,0,0.6)',
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: '#1C1C28',
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
-              padding: 20,
-            }}
-          >
-            {/* Handle */}
-            <View
-              style={{
-                width: 40,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: '#444',
-                alignSelf: 'center',
-                marginBottom: 20,
-              }}
-            />
-
-            <Text style={{ color: '#fff', fontSize: 18, textAlign: 'center' }}>
-              Manga Düzenle
-            </Text>
-
-            {/* 🔥 ESKİ DEĞERLER */}
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <View style={{ backgroundColor: '#1C1C28', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Math.max( 28) }}>
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#444', alignSelf: 'center', marginBottom: 20 }} />
+            <Text style={{ color: '#fff', fontSize: 18, textAlign: 'center' }}>Manga Düzenle</Text>
             <View style={{ marginTop: 16 }}>
-              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>
-                Mevcut İsim
-              </Text>
-              <Text style={{ color: '#fff', marginBottom: 10, textAlign: 'center' }}>
-                {oldTitle}
-              </Text>
-
-              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>
-                Mevcut Kapak
-              </Text>
-
-              {oldCover ? (
+              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>Mevcut İsim</Text>
+              <Text style={{ color: '#fff', marginBottom: 10, textAlign: 'center', fontWeight: '600' }}>{oldTitle}</Text>
+              <Text style={{ color: '#888', fontSize: 12, textAlign: 'center' }}>Kapak Önizleme</Text>
+              <View style={{ alignItems: 'center', marginVertical: 12 }}>
                 <Image
-                  source={{ uri: oldCover }}
-                  style={{
-                    width: 90,
-                    height: 130,
-                    borderRadius: 10,
-                    alignSelf: 'center',
-                    marginBottom: 10,
-                  }}
+                  source={{ uri: editCover?.trim() || oldCover || 'https://via.placeholder.com/150' }}
+                  style={{ width: 120, height: 160, borderRadius: 12, backgroundColor: '#222' }}
                   resizeMode="cover"
                 />
-              ) : (
-                <Text style={{ color: '#aaa', textAlign: 'center', marginBottom: 10 }}>
-                  -
-                </Text>
-              )}
+              </View>
             </View>
-
-            {/* 🔥 YENİ PREVIEW */}
-            {!!editCover && (
-              <Image
-                source={{ uri: editCover }}
-                style={{
-                  width: 90,
-                  height: 130,
-                  borderRadius: 10,
-                  alignSelf: 'center',
-                  marginBottom: 10,
-                }}
-                resizeMode="cover"
-              />
-            )}
-
-            {/* INPUTLAR */}
             <TextInput
               value={editTitle}
               onChangeText={setEditTitle}
               placeholder="Yeni isim"
               placeholderTextColor="#666"
-              style={{
-                backgroundColor: '#2A2A35',
-                color: '#fff',
-                padding: 12,
-                borderRadius: 12,
-                marginBottom: 10,
-                textAlign: 'center',
-              }}
+              style={{ backgroundColor: '#2A2A35', color: '#fff', padding: 12, borderRadius: 12, marginBottom: 10 }}
             />
-
             <TextInput
               value={editCover}
               onChangeText={setEditCover}
               placeholder="Yeni kapak URL"
               placeholderTextColor="#666"
-              style={{
-                backgroundColor: '#2A2A35',
-                color: '#fff',
-                padding: 12,
-                borderRadius: 12,
-                textAlign: 'center',
-              }}
+              style={{ backgroundColor: '#2A2A35', color: '#fff', padding: 12, borderRadius: 12 }}
             />
-
-            {/* BUTTONS */}
             <TouchableOpacity
               onPress={saveEdit}
-              style={{
-                marginTop: 20,
-                backgroundColor: '#D4A843',
-                padding: 14,
-                borderRadius: 12, 
-                alignItems: 'center',
-              }}
+              style={{ marginTop: 20, backgroundColor: '#D4A843', padding: 14, borderRadius: 12, alignItems: 'center' }}
             >
-              <Text style={{ color: '#000', fontWeight: '800' }}>
-                Kaydet
-              </Text>
+              <Text style={{ color: '#000', fontWeight: '800' }}>Kaydet</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               onPress={() => setEditVisible(false)}
-              style={{
-                marginTop: 10,
-                alignItems: 'center',
-              }}
+              style={{ marginTop: 10, alignItems: 'center' }}
             >
               <Text style={{ color: '#aaa' }}>İptal</Text>
             </TouchableOpacity>
