@@ -205,18 +205,17 @@ const SelectionBar: React.FC<SelectionBarProps> = ({
       <TouchableOpacity style={sb.cancelBtn} onPress={onCancel}>
         <Text style={sb.cancelTxt}>✕</Text>
       </TouchableOpacity>
-      {/* Tümünü Seç / Seçimi Kaldır */}
+      <Text style={sb.count}>{count}/{total} seçili</Text>
+      <View style={sb.actions}>
+        {/* Tümünü Seç / Seçimi Kaldır */}
         <TouchableOpacity
           style={[sb.actionBtn, allSelected && sb.actionAllActive]}
           onPress={onSelectAll}
         >
           <Text style={[sb.actionTxt, { fontSize: 13, fontWeight: '900' }]}>
             {allSelected ? '☑' : '☐'}
-            
           </Text>
         </TouchableOpacity>
-      <Text style={sb.count}>{count}/{total} seçili</Text>
-      <View style={sb.actions}>
         {/* Okundu toggle */}
         <TouchableOpacity style={sb.actionBtn} onPress={onMarkReadSelected}>
           <Text style={sb.actionTxt}>✦</Text>
@@ -244,6 +243,7 @@ const sb = StyleSheet.create({
     backgroundColor: T.gold,
     borderTopWidth: 1,
     borderTopColor: T.lineHi,
+    // paddingBottom dinamik olarak ekleniyor (bottomInset)
   },
   inner: {
     height: 52,
@@ -575,9 +575,33 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const openChapter = (ch: Chapter) => {
-    if (ch.downloaded && ch.pages?.length)
-      navigation.navigate('Manga', { mangaLink: ch.link, localPages: ch.pages });
-    else navigation.navigate('Manga', { mangaLink: ch.link });
+    // Bölüm numarasına göre ARTAN sırada sırala (küçük → büyük)
+    // MangaScreen bu sıralamayı baz alarak Önceki/Sonraki hesaplar
+    const sortedChapters = [...chapters].sort((a, b) => {
+      const an = a.chapterNumber ?? 0;
+      const bn = b.chapterNumber ?? 0;
+      return an - bn;
+    });
+
+    const allChaptersMeta = sortedChapters.map(c => ({
+      link:          c.link,
+      chapterNumber: c.chapterNumber ?? 0,
+      // İndirilmiş sayfalar varsa taşı — MangaScreen tekrar indirmez
+      pages:         c.downloaded && c.pages?.length ? c.pages : undefined,
+    }));
+
+    const common = {
+      mangaTitle,
+      chapterId:   ch.link,
+      allChapters: allChaptersMeta,   // ✅ MangaScreen'in beklediği key
+      // allChapterIds artık gönderilmiyor
+    };
+
+    if (ch.downloaded && ch.pages?.length) {
+      navigation.navigate('Manga', { ...common, mangaLink: ch.link, localPages: ch.pages } as any);
+    } else {
+      navigation.navigate('Manga', { ...common, mangaLink: ch.link } as any);
+    }
   };
 
   const handleDelete = (ch: Chapter) => {

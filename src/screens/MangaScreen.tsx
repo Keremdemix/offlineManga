@@ -47,6 +47,13 @@ const BG_COLORS: Record<BgMode, string> = {
   sepia: C.bgSepia,
 };
 
+// ── Tip: ChaptersScreen'den gelen allChapters dizisinin her elemanı ──────────
+interface ChapterMeta {
+  link: string;
+  chapterNumber: number;
+  pages?: string[];
+}
+
 function dist(
   t1: { pageX: number; pageY: number },
   t2: { pageX: number; pageY: number },
@@ -55,8 +62,6 @@ function dist(
 }
 
 // ─── MangaPage ────────────────────────────────────────────────────────────────
-// FIX: Wrapper View şeffaf, backgroundColor sadece Image'e verilmez.
-// Zoom'da container bgColor zaten arka planı kaplar, sayfa arası siyah kalmaz.
 const MangaPage: React.FC<{ imagePath: string }> = React.memo(({ imagePath }) => {
   const [aspectRatio, setAspectRatio] = useState(1.4);
   const uri = imagePath.startsWith('http') ? imagePath : `file://${imagePath}`;
@@ -80,10 +85,31 @@ const MangaPage: React.FC<{ imagePath: string }> = React.memo(({ imagePath }) =>
 
 // ─── MangaScreen ─────────────────────────────────────────────────────────────
 const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
-  const { mangaLink, localPages, mangaTitle, chapterId, allChapterIds } =
+  const { mangaLink, localPages, mangaTitle, chapterId, allChapterIds, allChapters: allChaptersMeta } =
     route.params as any;
 
   const insets = useSafeAreaInsets();
+
+  // ── allChapters: yeni format (obje dizisi) veya eski format (string dizisi) ──
+  // ChaptersScreen artık allChapters (ChapterMeta[]) gönderiyor.
+  // Eski kod allChapterIds (string[]) gönderiyordu — ikisini de destekliyoruz.
+  const allChapters: ChapterMeta[] = React.useMemo(() => {
+    if (allChaptersMeta?.length) {
+      // Bölüm numarasına göre artan sırada (küçük → büyük)
+      return [...allChaptersMeta].sort(
+        (a: ChapterMeta, b: ChapterMeta) => a.chapterNumber - b.chapterNumber,
+      );
+    }
+    // Eski compat: sadece link dizisi varsa
+    const ids: string[] = allChapterIds ?? [];
+    return ids.map((link: string) => ({ link, chapterNumber: 0, pages: undefined }));
+  }, [allChaptersMeta, allChapterIds]);
+
+  // Aktif bölümün allChapters içindeki index'i
+  const currentChIdx = React.useMemo(
+    () => allChapters.findIndex(c => c.link === (chapterId ?? mangaLink)),
+    [allChapters, chapterId, mangaLink],
+  );
 
   const [pages,             setPages]             = useState<string[]>([]);
   const [loading,           setLoading]           = useState(true);
@@ -161,27 +187,19 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  // ── PanResponder — sadece 2-parmak pinch ve zoomed-pan ────────────────────
-  // TouchableWithoutFeedback KULLANILMIYOR — scroll bozulmasın diye
+  // ── PanResponder ───────────────────────────────────────────────────────────
   const panResponder = useRef(
   PanResponder.create({
-    // ── MOVE ─────────────────────────────────────────────
     onMoveShouldSetPanResponder: (e, g) => {
       const t = e.nativeEvent.touches.length;
-
       if (t === 2) return true;
-
-      if (readMode === 'page' && t === 1) return true;
-
       if (scaleRef.current > 1.05 && Math.abs(g.dx) > 6) return true;
-
       return false;
     },
 
     onPanResponderGrant: (e) => {
       panBaseTx.current = txRef.current;
       panBaseTy.current = tyRef.current;
-
       if (e.nativeEvent.touches.length === 2) {
         lastDist.current = null;
       }
@@ -190,62 +208,56 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
     onPanResponderMove: (e, g) => {
       const touches = e.nativeEvent.touches;
 
-      // ZOOM
       if (touches.length === 2) {
         const d = dist(
           { pageX: touches[0].pageX, pageY: touches[0].pageY },
           { pageX: touches[1].pageX, pageY: touches[1].pageY },
         );
-
         if (lastDist.current !== null) {
           const nextSc = Math.min(
             MAX_SCALE,
             Math.max(MIN_SCALE, scaleRef.current * (d / lastDist.current))
           );
-
           scaleRef.current = nextSc;
           scale.setValue(nextSc);
-
           setListScrollEnabled(nextSc <= 1.01);
         }
-
         lastDist.current = d;
         return;
       }
 
-      // PAGE MODE → burada hiçbir şey yapma (AMA ENGELLEME DE)
-      // ❗ önemli: return yok
-      if (readMode === 'page') {
-        return;
-      }
-
-      // PAN (zoom)
       if (scaleRef.current > 1.05) {
         const c = clamp(
           panBaseTx.current + g.dx,
           panBaseTy.current + g.dy,
           scaleRef.current
         );
-
         txRef.current = c.x;
         tyRef.current = c.y;
-
         translateX.setValue(c.x);
         translateY.setValue(c.y);
       }
     },
 
-    // ── RELEASE ─────────────────────────────────────────
     onPanResponderRelease: (e, g) => {
       lastDist.current = null;
 
+      // Page mode swipe — sadece zoom yokken
       if (readMode === 'page' && scaleRef.current <= 1.05) {
-        const swipeThreshold = 30; // daha hassas
-
-        if (g.dx < -swipeThreshold) {
-          goToPage(pageModePage + 1);
-        } else if (g.dx > swipeThreshold) {
-          goToPage(pageModePage - 1);
+        if (g.dx < -30) {
+          // Sola kaydır → sonraki sayfa (ileri bölüm)
+          setPageModePage(prev => {
+            const next = Math.min(pages.length - 1, prev + 1);
+            setCurrentPage(next);
+            return next;
+          });
+        } else if (g.dx > 30) {
+          // Sağa kaydır → önceki sayfa (geri bölüm)
+          setPageModePage(prev => {
+            const next = Math.max(0, prev - 1);
+            setCurrentPage(next);
+            return next;
+          });
         }
       }
 
@@ -260,7 +272,7 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
   })
 ).current;
 
-  // ── Double tap — onTouchEnd üzerinden, scroll bozulmadan ──────────────────
+  // ── Double tap ─────────────────────────────────────────────────────────────
   const handleTouchEnd = (e: any) => {
     const { pageX, pageY } = e.nativeEvent;
     const now = Date.now();
@@ -291,17 +303,10 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
         const idx = Math.min(Number(saved), count - 1);
         setTimeout(() => {
           if (readMode === 'vertical') {
-            flatRef.current?.scrollToOffset({
-              offset: idx * SH,
-              animated: false,
-            });
+            flatRef.current?.scrollToOffset({ offset: idx * SH, animated: false });
           } else {
-            flatRef.current?.scrollToIndex({
-              index: idx,
-              animated: false,
-            });
+            flatRef.current?.scrollToIndex({ index: idx, animated: false });
           }
-
           setCurrentPage(idx);
           setPageModePage(idx);
         }, 350);
@@ -327,62 +332,63 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
     })();
   }, [mangaLink, localPages]);
 
-// ── Scroll thumb ───────────────────────────────────────────────────────────
-const updateThumb = (offset: number, contentH: number, viewH: number) => {
-  if (contentH <= viewH || thumbTrackH.current <= 0) return;
+  // ── Scroll thumb ───────────────────────────────────────────────────────────
+  const updateThumb = (offset: number, contentH: number, viewH: number) => {
+    if (contentH <= viewH || thumbTrackH.current <= 0) return;
+    const maxScroll = contentH - viewH;
+    const ratio = Math.min(1, Math.max(0, offset / maxScroll));
+    scrollThumbY.setValue(ratio * thumbTrackH.current);
+  };
 
-  const maxScroll = contentH - viewH;
-  const ratio = Math.min(1, Math.max(0, offset / maxScroll));
-
-  scrollThumbY.setValue(ratio * thumbTrackH.current);
-};
-
-const handleScroll = (e: any) => {
-  const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
-
-  // 🔥 DOĞRU index hesaplama (ekran yüksekliğine göre)
-  const pageHeight = layoutMeasurement.height;
-  const idx = Math.max(
-    0,
-    Math.min(pages.length - 1, Math.round(contentOffset.y / pageHeight))
-  );
-
-  if (idx !== currentPage) {
-    setCurrentPage(idx);
-    savePosition(idx);
-  }
-
-  // 🔥 Thumb update (daha stabil)
-  updateThumb(contentOffset.y, contentSize.height, layoutMeasurement.height);
-};
+  const handleScroll = (e: any) => {
+    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+    const pageHeight = layoutMeasurement.height;
+    const idx = Math.max(
+      0,
+      Math.min(pages.length - 1, Math.round(contentOffset.y / pageHeight))
+    );
+    if (idx !== currentPage) {
+      setCurrentPage(idx);
+      savePosition(idx);
+    }
+    updateThumb(contentOffset.y, contentSize.height, layoutMeasurement.height);
+  };
 
   // ── Chapter nav ────────────────────────────────────────────────────────────
-  const allIds: string[] = allChapterIds ?? [];
-  const currentChIdx     = chapterId ? allIds.indexOf(chapterId) : -1;
+  // allChapters artan sırada (küçük bölüm → büyük bölüm)
+  // "Önceki" = daha küçük bölüm numarası (index - 1)
+  // "Sonraki" = daha büyük bölüm numarası (index + 1)
+  const hasPrev = currentChIdx > 0;
+  const hasNext = currentChIdx >= 0 && currentChIdx < allChapters.length - 1;
 
   const goChapter = (dir: 'prev' | 'next') => {
-    if (currentChIdx === -1 || !allIds.length) return;
-    const target = dir === 'next' ? currentChIdx - 1 : currentChIdx + 1;
-    if (target < 0 || target >= allIds.length) return;
-    navigation.replace('Manga', { mangaLink: allIds[target], mangaTitle, chapterId: allIds[target], allChapterIds: allIds } as any);
+    if (currentChIdx === -1 || !allChapters.length) return;
+    const targetIdx = dir === 'next' ? currentChIdx + 1 : currentChIdx - 1;
+    if (targetIdx < 0 || targetIdx >= allChapters.length) return;
+
+    const target = allChapters[targetIdx];
+
+    navigation.replace('Manga', {
+      mangaLink:     target.link,
+      mangaTitle,
+      chapterId:     target.link,
+      // İndirilmiş sayfalar varsa direkt geç, yoksa undefined → online yüklenecek
+      localPages:    target.pages?.length ? target.pages : undefined,
+      allChapters:   allChapters,       // obje dizisini taşı
+      allChapterIds: undefined,         // eski format artık kullanılmıyor
+    } as any);
   };
 
   // ── PAGE NAV ───────────────────────────────────────────────────────────────
   const goToPage = (idx: number) => {
-  const next = Math.max(0, Math.min(pages.length - 1, idx));
-
-  setPageModePage(next);
-  setCurrentPage(next);
-  savePosition(next);
-
-  // ❌ FlatList scroll'u sadece vertical mod için olmalı
-  if (readMode !== 'page') {
-    flatRef.current?.scrollToIndex({
-      index: next,
-      animated: true,
-    });
-  }
-};
+    const next = Math.max(0, Math.min(pages.length - 1, idx));
+    setPageModePage(next);
+    setCurrentPage(next);
+    savePosition(next);
+    if (readMode !== 'page') {
+      flatRef.current?.scrollToIndex({ index: next, animated: true });
+    }
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   const renderItem = useCallback(
@@ -407,14 +413,13 @@ const handleScroll = (e: any) => {
       </View>
     );
 
-  const isPage  = readMode === 'page';
+  const isPage = readMode === 'page';
 
   return (
-    // bgColor burada — zoom'da sayfa arası bu renk görünür, siyah kalmaz
     <View style={[s.container, { backgroundColor: bgColor }]}>
       <StatusBar hidden={!uiVisible} />
 
-      {/* ── Gesture katmanı: pinch + double-tap, TouchableWithoutFeedback YOK ─ */}
+      {/* ── Gesture katmanı ────────────────────────────────────────────────── */}
       <View
         style={StyleSheet.absoluteFill}
         {...panResponder.panHandlers}
@@ -435,9 +440,7 @@ const handleScroll = (e: any) => {
               renderItem={({ item }) => (
                 <View style={{ width: SW, height: SH }}>
                   <Image
-                    source={{
-                      uri: item.startsWith('http') ? item : `file://${item}`,
-                    }}
+                    source={{ uri: item.startsWith('http') ? item : `file://${item}` }}
                     style={{ width: '100%', height: '100%' }}
                     resizeMode="contain"
                   />
@@ -493,18 +496,16 @@ const handleScroll = (e: any) => {
         <Text style={s.topTitle} numberOfLines={1}>{mangaTitle ?? 'Manga'}</Text>
 
         <View style={s.topRight}>
-          {/* 👁 UI Toggle */}
           <TouchableOpacity style={s.topBtn} onPress={toggleUi}>
             <Text style={s.topBtnTxt}>👁</Text>
           </TouchableOpacity>
-          {/* Ayarlar */}
           <TouchableOpacity style={s.topBtn} onPress={() => setSettingsOpen(true)}>
             <Text style={s.topBtnTxt}>⚙</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
 
-      {/* ── UI KAPALI: sağ üstte kalıcı küçük toggle butonu ────────────────── */}
+      {/* ── UI kapalıyken floating toggle ──────────────────────────────────── */}
       {!uiVisible && (
         <TouchableOpacity
           style={[s.floatingToggle, { top: insets.top + 8 }]}
@@ -523,10 +524,11 @@ const handleScroll = (e: any) => {
         <Text style={s.pageInfo}>{currentPage + 1} / {pages.length}</Text>
 
         <View style={s.bottomRow}>
+          {/* Önceki bölüm = daha küçük numara */}
           <TouchableOpacity
-            style={[s.navBtn, currentChIdx <= 0 && s.navBtnDisabled]}
-            onPress={() => goChapter('next')}
-            disabled={currentChIdx <= 0}
+            style={[s.navBtn, !hasPrev && s.navBtnDisabled]}
+            onPress={() => goChapter('prev')}
+            disabled={!hasPrev}
           >
             <Text style={s.navBtnTxt}>‹ Önceki</Text>
           </TouchableOpacity>
@@ -535,16 +537,15 @@ const handleScroll = (e: any) => {
             <Text style={s.chapBtnTxt}>☰ Bölümler</Text>
           </TouchableOpacity>
 
+          {/* Sonraki bölüm = daha büyük numara */}
           <TouchableOpacity
-            style={[s.navBtn, currentChIdx >= allIds.length - 1 && s.navBtnDisabled]}
-            onPress={() => goChapter('prev')}
-            disabled={currentChIdx >= allIds.length - 1}
+            style={[s.navBtn, !hasNext && s.navBtnDisabled]}
+            onPress={() => goChapter('next')}
+            disabled={!hasNext}
           >
             <Text style={s.navBtnTxt}>Sonraki ›</Text>
           </TouchableOpacity>
         </View>
-        
-
       </Animated.View>
 
       {/* ── Immersive sayfa numarası ───────────────────────────────────────── */}
@@ -565,7 +566,7 @@ const handleScroll = (e: any) => {
 
                 <Text style={s.settingLabel}>OKUMA MODU</Text>
                 <View style={s.optRow}>
-                  {(['vertical',  'page'] as ReadMode[]).map(m => (
+                  {(['vertical', 'page'] as ReadMode[]).map(m => (
                     <TouchableOpacity
                       key={m}
                       style={[s.optBtn, readMode === m && s.optBtnActive]}
@@ -614,22 +615,31 @@ const handleScroll = (e: any) => {
                 <View style={s.sheetHandle} />
                 <Text style={s.sheetTitle}>Bölümler</Text>
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  {allIds.map((id, i) => {
-                    const isCurrent = id === chapterId;
+                  {/* Büyük → küçük sırada göster (en yeni üstte) */}
+                  {[...allChapters].reverse().map((ch) => {
+                    const isCurrent = ch.link === (chapterId ?? mangaLink);
                     return (
                       <TouchableOpacity
-                        key={id}
+                        key={ch.link}
                         style={[s.chapRow, isCurrent && s.chapRowActive]}
                         onPress={() => {
                           setChaptersOpen(false);
-                          if (!isCurrent)
-                            navigation.replace('Manga', { mangaLink: id, mangaTitle, chapterId: id, allChapterIds: allIds } as any);
+                          if (!isCurrent) {
+                            navigation.replace('Manga', {
+                              mangaLink:   ch.link,
+                              mangaTitle,
+                              chapterId:   ch.link,
+                              localPages:  ch.pages?.length ? ch.pages : undefined,
+                              allChapters: allChapters,
+                            } as any);
+                          }
                         }}
                       >
                         <Text style={[s.chapRowTxt, isCurrent && s.chapRowTxtActive]}>
-                          Bölüm {allIds.length - i}
+                          {ch.chapterNumber > 0 ? `Bölüm ${ch.chapterNumber}` : ch.link}
                         </Text>
                         {isCurrent && <Text style={s.chapRowBadge}>Şu an</Text>}
+                        {ch.pages?.length ? <Text style={s.chapRowBadge}>✓ İndirildi</Text> : null}
                       </TouchableOpacity>
                     );
                   })}
@@ -679,7 +689,6 @@ const s = StyleSheet.create({
   topBtnTxt: { color: C.ink, fontSize: 20, fontWeight: '700' },
   topTitle:  { flex: 1, color: C.ink, fontSize: 14, fontWeight: '700', textAlign: 'center', marginHorizontal: 6 },
 
-  // UI kapalıyken sağ üstte kalıcı buton
   floatingToggle: {
     position: 'absolute', right: 12, zIndex: 50,
     width: 36, height: 36, borderRadius: 10,
@@ -714,10 +723,6 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: C.gold + '55', alignItems: 'center',
   },
   chapBtnTxt: { color: C.gold, fontSize: 13, fontWeight: '800' },
-
-  dotRow:    { flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 8, flexWrap: 'wrap' },
-  dot:       { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.22)' },
-  dotActive: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.gold },
 
   miniInfo: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 20 },
   miniInfoTxt: {
@@ -761,5 +766,6 @@ const s = StyleSheet.create({
   chapRowBadge: {
     color: C.gold, fontSize: 10, fontWeight: '800',
     backgroundColor: C.gold + '22', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+    marginLeft: 6,
   },
 });
