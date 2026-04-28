@@ -43,7 +43,9 @@ const AppNavigator: React.FC = () => {
         <Stack.Screen
           name="Manga"
           component={MangaScreen}
-          options={{ title: 'Okuma' }}
+          options={{ headerShown: false }}
+
+          
         />
         <Stack.Screen
           name="AllMangas"
