@@ -380,15 +380,18 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   // ── PAGE NAV ───────────────────────────────────────────────────────────────
-  const goToPage = (idx: number) => {
-    const next = Math.max(0, Math.min(pages.length - 1, idx));
-    setPageModePage(next);
-    setCurrentPage(next);
-    savePosition(next);
-    if (readMode !== 'page') {
-      flatRef.current?.scrollToIndex({ index: next, animated: true });
-    }
-  };
+const scrollToPage = useCallback((index: number) => {
+  const next = Math.max(0, Math.min(pages.length - 1, index));
+
+  setPageModePage(next);
+  setCurrentPage(next);
+  savePosition(next);
+
+  flatRef.current?.scrollToOffset({
+    offset: next * SW,
+    animated: true,
+  });
+}, [pages.length]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   const renderItem = useCallback(
@@ -516,12 +519,38 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
         </TouchableOpacity>
       )}
 
+      <View style={s.pageRow}>
+          {isPage && (
+            <TouchableOpacity
+              style={[s.pageNavBtn, pageModePage === 0 && s.navBtnDisabled]}
+              onPress={() => scrollToPage(pageModePage - 1)}
+              disabled={pageModePage === 0}
+            >
+              <Text style={s.pageNavTxt}>‹</Text>
+            </TouchableOpacity>
+          )}
+
+          <Text style={s.pageInfo}>
+            {currentPage + 1} / {pages.length}
+          </Text>
+
+          {isPage && (
+            <TouchableOpacity
+              style={[s.pageNavBtn, pageModePage === pages.length - 1 && s.navBtnDisabled]}
+              onPress={() => scrollToPage(pageModePage + 1)}
+              disabled={pageModePage === pages.length - 1}
+            >
+              <Text style={s.pageNavTxt}>›</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
       {/* ── BOTTOM BAR ─────────────────────────────────────────────────────── */}
       <Animated.View
         style={[s.bottomBar, { opacity: uiAnim, paddingBottom: insets.bottom + 4 }]}
         pointerEvents={uiVisible ? 'box-none' : 'none'}
       >
-        <Text style={s.pageInfo}>{currentPage + 1} / {pages.length}</Text>
+        
 
         <View style={s.bottomRow}>
           {/* Önceki bölüm = daha küçük numara */}
@@ -548,12 +577,6 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
         </View>
       </Animated.View>
 
-      {/* ── Immersive sayfa numarası ───────────────────────────────────────── */}
-      {!uiVisible && (
-        <View style={[s.miniInfo, { bottom: insets.bottom + 8 }]} pointerEvents="none">
-          <Text style={s.miniInfoTxt}>{currentPage + 1} / {pages.length}</Text>
-        </View>
-      )}
 
       {/* ── SETTINGS MODAL ─────────────────────────────────────────────────── */}
       <Modal visible={settingsOpen} transparent animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
@@ -704,7 +727,7 @@ const s = StyleSheet.create({
     paddingTop: 10, paddingHorizontal: 14, zIndex: 30,
   },
   pageInfo: {
-    color: C.inkMid, fontSize: 11, textAlign: 'center',
+    color: C.inkMid, fontSize: 14, textAlign: 'center',
     marginBottom: 8, fontWeight: '700', letterSpacing: 1,
   },
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between' },
@@ -768,4 +791,36 @@ const s = StyleSheet.create({
     backgroundColor: C.gold + '22', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
     marginLeft: 6,
   },
+  pageRow: {
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  right: 0,
+
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 12,
+  marginBottom: 28,
+  paddingBottom: 36,
+
+  backgroundColor: 'rgba(0,0,0,0.75)', // opsiyonel ama önerilir
+},
+
+pageNavBtn: {
+  marginBottom: 8,
+  paddingBottom: 4,
+  width: 32,
+  height: 32,
+  borderRadius: 8,
+  backgroundColor: 'rgba(255,255,255,0.08)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+
+pageNavTxt: {
+  color: '#fff',
+  fontSize: 18,
+  fontWeight: '800',
+},
 });
