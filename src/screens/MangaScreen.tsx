@@ -803,8 +803,6 @@ const s = StyleSheet.create({
   gap: 12,
   marginBottom: 28,
   paddingBottom: 36,
-
-  backgroundColor: 'rgba(0,0,0,0.75)', // opsiyonel ama önerilir
 },
 
 pageNavBtn: {

@@ -1,4 +1,3 @@
-// services/mangaService.ts
 import { parseMangaImages } from '../utils/htmlParser';
 import { downloadMangaPages } from '../utils/fileUtils';
 
@@ -13,6 +12,7 @@ export async function downloadMangaChapter(
 ): Promise<DownloadResult> {
   try {
     const response = await fetch(mangaUrl);
+
     if (!response.ok) {
       return { pages: [], error: `HTTP ${response.status}` };
     }
@@ -20,10 +20,12 @@ export async function downloadMangaChapter(
     const html = await response.text();
     console.log('HTML LENGTH:', html.length);
 
-    const imageUrls = parseMangaImages(html);
+    // 🔥 FIX BURADA
+    const imageUrls = await parseMangaImages(html);
+
     console.log('FOUND IMAGES:', imageUrls.length);
 
-    if (imageUrls.length === 0) {
+    if (!imageUrls || imageUrls.length === 0) {
       return { pages: [], error: 'Sayfa bulunamadı' };
     }
 

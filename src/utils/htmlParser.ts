@@ -1,9 +1,40 @@
-export function parseMangaImages(html: string): string[] {
-  if (!html) return [];
+// utils/parseMangaImages.ts
+import { Image } from 'react-native';
+
+const MIN_SIZE = 600;
+
+/**
+ * 600x600 altını filtreler (async çünkü Image.getSize kullanır)
+ */
+async function filterBySize(urls: string[]): Promise<string[]> {
+  const results = await Promise.all(
+    urls.map(
+      (url) =>
+        new Promise<string | null>((resolve) => {
+          Image.getSize(
+            url,
+            (w, h) => {
+              if ( h >= MIN_SIZE) resolve(url);
+              else resolve(null);
+            },
+            () => resolve(null),
+          );
+        }),
+    ),
+  );
+
+  return results.filter(Boolean) as string[];
+}
+
+/**
+ * HTML içinden manga image URL'lerini çıkarır
+ */
+export async function parseMangaImages(html: string): Promise<string[]> {
+  if (!html || typeof html !== 'string') return [];
 
   const urls: string[] = [];
 
-  // 🔥 1. IMG TAGS
+  // 🔥 IMG TAGS
   const imgRegex = /<img[^>]*>/gi;
   let match: RegExpExecArray | null;
 
@@ -20,29 +51,27 @@ export function parseMangaImages(html: string): string[] {
 
     const clean = url.trim();
 
-    // ❌ invalids
     if (
       !clean ||
       clean.startsWith('data:') ||
       clean.includes('placeholder') ||
       clean.includes('loading')
-    )
-      continue;
+    ) continue;
 
-    // ❌ asset filter (SAFE VERSION)
-    const isAsset = /logo|icon|avatar|banner|profile|favicon/i.test(clean);
+    const isAsset =
+      /logo|icon|avatar|banner|profile|favicon/i.test(clean);
 
-    // ❌ image check
-    const isImage = /\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(clean);
+    const isImage =
+      /\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(clean);
 
     if (!isImage || isAsset) continue;
 
     urls.push(clean);
   }
 
-  // 🔥 2. FALLBACK (SPAN / DIV background-image lazy sites)
+  // 🔥 BACKGROUND IMAGES
   const bgRegex = /background-image\s*:\s*url\(["']?(.*?)["']?\)/gi;
-  let bgMatch;
+  let bgMatch: RegExpExecArray | null;
 
   while ((bgMatch = bgRegex.exec(html)) !== null) {
     const clean = bgMatch[1]?.trim();
@@ -51,11 +80,16 @@ export function parseMangaImages(html: string): string[] {
     }
   }
 
-  // 🔥 3. CLEAN + UNIQUE
+  // 🔥 UNIQUE
   const unique = [...new Set(urls)];
 
-  // 🔥 4. SORT (son sayı bazlı)
-  unique.sort((a, b) => {
+  console.log('FOUND IMAGES (raw):', unique.length);
+
+  // 🔥 SIZE FILTER (600x600)
+  const filtered = await filterBySize(unique);
+
+  // 🔥 SORT (numara bazlı)
+  filtered.sort((a, b) => {
     const getNum = (s: string) => {
       const m = s.match(/(\d+)(?=\.\w+(\?|$))/);
       return m ? Number(m[1]) : 0;
@@ -63,7 +97,7 @@ export function parseMangaImages(html: string): string[] {
     return getNum(a) - getNum(b);
   });
 
-  console.log('FOUND IMAGES:', unique.length);
+  console.log('FOUND IMAGES (600+):', filtered.length);
 
-  return unique;
+  return filtered;
 }

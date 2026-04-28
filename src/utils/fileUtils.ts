@@ -1,9 +1,13 @@
-// utils/fileUtils.ts
 import RNFS from 'react-native-fs';
 import { parseMangaImages } from './htmlParser';
 
 export async function downloadMangaPages(html: string, folderName: string) {
-  const urls = parseMangaImages(html);
+  const urls = await parseMangaImages(html); // 🔥 FIX
+
+  if (!urls || urls.length === 0) {
+    throw new Error('No images found');
+  }
+
   const dir = `${RNFS.DocumentDirectoryPath}/${folderName}`;
 
   await RNFS.mkdir(dir).catch(() => null);
