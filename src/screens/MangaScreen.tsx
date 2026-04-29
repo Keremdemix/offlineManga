@@ -47,7 +47,6 @@ const BG_COLORS: Record<BgMode, string> = {
   sepia: C.bgSepia,
 };
 
-// ── Tip: ChaptersScreen'den gelen allChapters dizisinin her elemanı ──────────
 interface ChapterMeta {
   link: string;
   chapterNumber: number;
@@ -61,17 +60,53 @@ function dist(
   return Math.sqrt((t1.pageX - t2.pageX) ** 2 + (t1.pageY - t2.pageY) ** 2);
 }
 
+// ─── Aspect ratio cache — modül seviyesinde, mount/unmount'tan etkilenmez ─────
+// key: imagePath → value: w/h oranı
+// Bir kez ölçülen sayfa bir daha ölçülmez, boyut sabitleniyor.
+const aspectCache: Record<string, number> = {};
+
 // ─── MangaPage ────────────────────────────────────────────────────────────────
-const MangaPage: React.FC<{ imagePath: string }> = React.memo(({ imagePath }) => {
-  const [aspectRatio, setAspectRatio] = useState(1.4);
+const MangaPage: React.FC<{
+  imagePath: string;
+  onSizeKnown?: (path: string, ratio: number) => void;
+}> = React.memo(({ imagePath, onSizeKnown }) => {
   const uri = imagePath.startsWith('http') ? imagePath : `file://${imagePath}`;
 
+  // Cache'de varsa direkt kullan — state güncellemesi yok, layout atlaması yok
+  const [aspectRatio, setAspectRatio] = useState<number>(
+    () => aspectCache[imagePath] ?? 0, // 0 = henüz bilinmiyor
+  );
+
   useEffect(() => {
-    Image.getSize(uri, (w, h) => { if (w > 0 && h > 0) setAspectRatio(w / h); }, () => {});
+    if (aspectCache[imagePath]) {
+      // Zaten biliniyor, hiçbir şey yapma
+      if (aspectRatio !== aspectCache[imagePath]) setAspectRatio(aspectCache[imagePath]);
+      return;
+    }
+    Image.getSize(
+      uri,
+      (w, h) => {
+        if (w > 0 && h > 0) {
+          const ratio = w / h;
+          aspectCache[imagePath] = ratio;
+          setAspectRatio(ratio);
+          onSizeKnown?.(imagePath, ratio);
+        }
+      },
+      () => {
+        // Hata durumunda varsayılan oran
+        aspectCache[imagePath] = 1.4;
+        setAspectRatio(1.4);
+      },
+    );
   }, [uri]);
 
+  // Boyut henüz bilinmiyorsa placeholder göster — yüksekliği sabit tutuyoruz
+  // ki FlatList layout hesabı bozulmasın
+  const ratio = aspectRatio > 0 ? aspectRatio : 1.4;
+
   return (
-    <View style={{ width: SW, height: SW / aspectRatio }}>
+    <View style={{ width: SW, height: SW / ratio }}>
       <Image
         source={{ uri }}
         style={StyleSheet.absoluteFill}
@@ -82,7 +117,6 @@ const MangaPage: React.FC<{ imagePath: string }> = React.memo(({ imagePath }) =>
   );
 });
 
-
 // ─── MangaScreen ─────────────────────────────────────────────────────────────
 const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
   const { mangaLink, localPages, mangaTitle, chapterId, allChapterIds, allChapters: allChaptersMeta } =
@@ -90,22 +124,16 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const insets = useSafeAreaInsets();
 
-  // ── allChapters: yeni format (obje dizisi) veya eski format (string dizisi) ──
-  // ChaptersScreen artık allChapters (ChapterMeta[]) gönderiyor.
-  // Eski kod allChapterIds (string[]) gönderiyordu — ikisini de destekliyoruz.
   const allChapters: ChapterMeta[] = React.useMemo(() => {
     if (allChaptersMeta?.length) {
-      // Bölüm numarasına göre artan sırada (küçük → büyük)
       return [...allChaptersMeta].sort(
         (a: ChapterMeta, b: ChapterMeta) => a.chapterNumber - b.chapterNumber,
       );
     }
-    // Eski compat: sadece link dizisi varsa
     const ids: string[] = allChapterIds ?? [];
     return ids.map((link: string) => ({ link, chapterNumber: 0, pages: undefined }));
   }, [allChaptersMeta, allChapterIds]);
 
-  // Aktif bölümün allChapters içindeki index'i
   const currentChIdx = React.useMemo(
     () => allChapters.findIndex(c => c.link === (chapterId ?? mangaLink)),
     [allChapters, chapterId, mangaLink],
@@ -129,6 +157,29 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
   const scrollThumbY = useRef(new Animated.Value(0)).current;
   const thumbTrackH  = useRef(0);
   const uiAnim       = useRef(new Animated.Value(1)).current;
+
+  // ── Padding animasyonları — state yerine Animated.Value ile yönetiliyor
+  // Bu sayede uiVisible değişince FlatList layout yapmıyor, titreme olmuyor.
+  const topBarH    = TOP_BAR_H + insets.top;
+  const bottomBarH = BOTTOM_BAR_INNER_H + insets.bottom + 4;
+
+  const animPaddingTop    = useRef(new Animated.Value(topBarH)).current;
+  const animPaddingBottom = useRef(new Animated.Value(bottomBarH)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(animPaddingTop, {
+        toValue: uiVisible ? topBarH : 0,
+        duration: 200,
+        useNativeDriver: false, // layout property, native driver desteklemez
+      }),
+      Animated.timing(animPaddingBottom, {
+        toValue: uiVisible ? bottomBarH : insets.bottom,
+        duration: 200,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [uiVisible]);
 
   // Zoom
   const scale      = useRef(new Animated.Value(1)).current;
@@ -189,88 +240,85 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // ── PanResponder ───────────────────────────────────────────────────────────
   const panResponder = useRef(
-  PanResponder.create({
-    onMoveShouldSetPanResponder: (e, g) => {
-      const t = e.nativeEvent.touches.length;
-      if (t === 2) return true;
-      if (scaleRef.current > 1.05 && Math.abs(g.dx) > 6) return true;
-      return false;
-    },
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (e, g) => {
+        const t = e.nativeEvent.touches.length;
+        if (t === 2) return true;
+        if (scaleRef.current > 1.05 && Math.abs(g.dx) > 6) return true;
+        return false;
+      },
 
-    onPanResponderGrant: (e) => {
-      panBaseTx.current = txRef.current;
-      panBaseTy.current = tyRef.current;
-      if (e.nativeEvent.touches.length === 2) {
-        lastDist.current = null;
-      }
-    },
+      onPanResponderGrant: (e) => {
+        panBaseTx.current = txRef.current;
+        panBaseTy.current = tyRef.current;
+        if (e.nativeEvent.touches.length === 2) {
+          lastDist.current = null;
+        }
+      },
 
-    onPanResponderMove: (e, g) => {
-      const touches = e.nativeEvent.touches;
+      onPanResponderMove: (e, g) => {
+        const touches = e.nativeEvent.touches;
 
-      if (touches.length === 2) {
-        const d = dist(
-          { pageX: touches[0].pageX, pageY: touches[0].pageY },
-          { pageX: touches[1].pageX, pageY: touches[1].pageY },
-        );
-        if (lastDist.current !== null) {
-          const nextSc = Math.min(
-            MAX_SCALE,
-            Math.max(MIN_SCALE, scaleRef.current * (d / lastDist.current))
+        if (touches.length === 2) {
+          const d = dist(
+            { pageX: touches[0].pageX, pageY: touches[0].pageY },
+            { pageX: touches[1].pageX, pageY: touches[1].pageY },
           );
-          scaleRef.current = nextSc;
-          scale.setValue(nextSc);
-          setListScrollEnabled(nextSc <= 1.01);
+          if (lastDist.current !== null) {
+            const nextSc = Math.min(
+              MAX_SCALE,
+              Math.max(MIN_SCALE, scaleRef.current * (d / lastDist.current))
+            );
+            scaleRef.current = nextSc;
+            scale.setValue(nextSc);
+            setListScrollEnabled(nextSc <= 1.01);
+          }
+          lastDist.current = d;
+          return;
         }
-        lastDist.current = d;
-        return;
-      }
 
-      if (scaleRef.current > 1.05) {
-        const c = clamp(
-          panBaseTx.current + g.dx,
-          panBaseTy.current + g.dy,
-          scaleRef.current
-        );
-        txRef.current = c.x;
-        tyRef.current = c.y;
-        translateX.setValue(c.x);
-        translateY.setValue(c.y);
-      }
-    },
-
-    onPanResponderRelease: (e, g) => {
-      lastDist.current = null;
-
-      // Page mode swipe — sadece zoom yokken
-      if (readMode === 'page' && scaleRef.current <= 1.05) {
-        if (g.dx < -30) {
-          // Sola kaydır → sonraki sayfa (ileri bölüm)
-          setPageModePage(prev => {
-            const next = Math.min(pages.length - 1, prev + 1);
-            setCurrentPage(next);
-            return next;
-          });
-        } else if (g.dx > 30) {
-          // Sağa kaydır → önceki sayfa (geri bölüm)
-          setPageModePage(prev => {
-            const next = Math.max(0, prev - 1);
-            setCurrentPage(next);
-            return next;
-          });
+        if (scaleRef.current > 1.05) {
+          const c = clamp(
+            panBaseTx.current + g.dx,
+            panBaseTy.current + g.dy,
+            scaleRef.current
+          );
+          txRef.current = c.x;
+          tyRef.current = c.y;
+          translateX.setValue(c.x);
+          translateY.setValue(c.y);
         }
-      }
+      },
 
-      if (scaleRef.current < 1.1) {
-        snapToNormal();
-      }
-    },
+      onPanResponderRelease: (e, g) => {
+        lastDist.current = null;
 
-    onPanResponderTerminate: () => {
-      lastDist.current = null;
-    },
-  })
-).current;
+        if (readMode === 'page' && scaleRef.current <= 1.05) {
+          if (g.dx < -30) {
+            setPageModePage(prev => {
+              const next = Math.min(pages.length - 1, prev + 1);
+              setCurrentPage(next);
+              return next;
+            });
+          } else if (g.dx > 30) {
+            setPageModePage(prev => {
+              const next = Math.max(0, prev - 1);
+              setCurrentPage(next);
+              return next;
+            });
+          }
+        }
+
+        if (scaleRef.current < 1.1) {
+          snapToNormal();
+        }
+      },
+
+      onPanResponderTerminate: () => {
+        lastDist.current = null;
+      },
+    })
+  ).current;
 
   // ── Double tap ─────────────────────────────────────────────────────────────
   const handleTouchEnd = (e: any) => {
@@ -303,7 +351,7 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
         const idx = Math.min(Number(saved), count - 1);
         setTimeout(() => {
           if (readMode === 'vertical') {
-            flatRef.current?.scrollToOffset({ offset: idx * SH, animated: false });
+            flatRef.current?.scrollToIndex({ index: idx, animated: false });
           } else {
             flatRef.current?.scrollToIndex({ index: idx, animated: false });
           }
@@ -340,24 +388,32 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
     scrollThumbY.setValue(ratio * thumbTrackH.current);
   };
 
-  const handleScroll = (e: any) => {
-    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
-    const pageHeight = layoutMeasurement.height;
-    const idx = Math.max(
-      0,
-      Math.min(pages.length - 1, Math.round(contentOffset.y / pageHeight))
-    );
-    if (idx !== currentPage) {
-      setCurrentPage(idx);
-      savePosition(idx);
+  // ── Dikey mod: viewable item takibi ile doğru sayfa numarası ──────────────
+  // onScroll'da offset/pageHeight hesabı değişken yükseklikli sayfalarda hatalı.
+  // onViewableItemsChanged en ortada/görünürde olan item'ı verir — çok daha doğru.
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50, // %50'si görünüyorsa "görünür" say
+  }).current;
+
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: any[] }) => {
+      if (viewableItems.length === 0) return;
+      // Birden fazla item görünüyorsa ortadakini al
+      const mid = Math.floor(viewableItems.length / 2);
+      const idx = viewableItems[mid]?.index ?? viewableItems[0]?.index;
+      if (idx != null) {
+        setCurrentPage(idx);
+        savePosition(idx);
+      }
     }
+  ).current;
+
+  const handleScroll = useCallback((e: any) => {
+    const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
     updateThumb(contentOffset.y, contentSize.height, layoutMeasurement.height);
-  };
+  }, []);
 
   // ── Chapter nav ────────────────────────────────────────────────────────────
-  // allChapters artan sırada (küçük bölüm → büyük bölüm)
-  // "Önceki" = daha küçük bölüm numarası (index - 1)
-  // "Sonraki" = daha büyük bölüm numarası (index + 1)
   const hasPrev = currentChIdx > 0;
   const hasNext = currentChIdx >= 0 && currentChIdx < allChapters.length - 1;
 
@@ -372,31 +428,35 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
       mangaLink:     target.link,
       mangaTitle,
       chapterId:     target.link,
-      // İndirilmiş sayfalar varsa direkt geç, yoksa undefined → online yüklenecek
       localPages:    target.pages?.length ? target.pages : undefined,
-      allChapters:   allChapters,       // obje dizisini taşı
-      allChapterIds: undefined,         // eski format artık kullanılmıyor
+      allChapters:   allChapters,
+      allChapterIds: undefined,
     } as any);
   };
 
-  // ── PAGE NAV ───────────────────────────────────────────────────────────────
-const scrollToPage = useCallback((index: number) => {
-  const next = Math.max(0, Math.min(pages.length - 1, index));
-
-  setPageModePage(next);
-  setCurrentPage(next);
-  savePosition(next);
-
-  flatRef.current?.scrollToOffset({
-    offset: next * SW,
-    animated: true,
-  });
-}, [pages.length]);
+  // ── Page mod scroll ────────────────────────────────────────────────────────
+  const scrollToPage = useCallback((index: number) => {
+    const next = Math.max(0, Math.min(pages.length - 1, index));
+    setPageModePage(next);
+    setCurrentPage(next);
+    savePosition(next);
+    flatRef.current?.scrollToOffset({
+      offset: next * SW,
+      animated: true,
+    });
+  }, [pages.length]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  const handleSizeKnown = useCallback((_path: string, _ratio: number) => {
+    // Boyut cache'e kaydedildi (MangaPage içinde).
+    // maintainVisibleContentPosition layout kaymasını absorbe eder.
+  }, []);
+
   const renderItem = useCallback(
-    ({ item }: { item: string }) => <MangaPage imagePath={item} />,
-    [],
+    ({ item }: { item: string }) => (
+      <MangaPage imagePath={item} onSizeKnown={handleSizeKnown} />
+    ),
+    [handleSizeKnown],
   );
   const keyExtractor = useCallback((_: string, i: number) => i.toString(), []);
 
@@ -433,6 +493,7 @@ const scrollToPage = useCallback((index: number) => {
           pointerEvents="box-none"
         >
           {isPage ? (
+            // ── PAGE MOD ───────────────────────────────────────────────────
             <FlatList
               ref={flatRef}
               data={pages}
@@ -456,7 +517,12 @@ const scrollToPage = useCallback((index: number) => {
               }}
             />
           ) : (
-            <FlatList
+            // ── VERTICAL MOD ───────────────────────────────────────────────
+            // contentContainerStyle'da Animated.Value kullanmak için
+            // Animated.FlatList yerine normal FlatList + wrapper trick.
+            // En temiz yol: paddingTop/Bottom'u Animated.Value'ya bağlı
+            // bir Animated.View ile sarmak.
+            <Animated.FlatList
               ref={flatRef}
               data={pages}
               keyExtractor={keyExtractor}
@@ -465,6 +531,8 @@ const scrollToPage = useCallback((index: number) => {
               onScroll={handleScroll}
               scrollEventThrottle={16}
               onLayout={e => { thumbTrackH.current = e.nativeEvent.layout.height - THUMB_H; }}
+              onViewableItemsChanged={onViewableItemsChanged}
+              viewabilityConfig={viewabilityConfig}
               removeClippedSubviews
               initialNumToRender={3}
               maxToRenderPerBatch={2}
@@ -474,6 +542,16 @@ const scrollToPage = useCallback((index: number) => {
               overScrollMode="never"
               bounces={false}
               directionalLockEnabled
+              // ── YUKARI SCROLL ATLAMA FİX ────────────────────────────────
+              // Görünür içeriğin hemen üstündeki item'ın yüksekliği
+              // değişince (aspect ratio gecikmeli yükleme) FlatList
+              // scroll offset'i korur — yukarıda içerik değişse bile
+              // ekran yerinde kalır.
+              maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+              contentContainerStyle={{
+                paddingTop:    animPaddingTop    as any,
+                paddingBottom: animPaddingBottom as any,
+              }}
             />
           )}
         </Animated.View>
@@ -519,41 +597,45 @@ const scrollToPage = useCallback((index: number) => {
         </TouchableOpacity>
       )}
 
-      <View style={s.pageRow}>
-          {isPage && (
-            <TouchableOpacity
-              style={[s.pageNavBtn, pageModePage === 0 && s.navBtnDisabled]}
-              onPress={() => scrollToPage(pageModePage - 1)}
-              disabled={pageModePage === 0}
-            >
-              <Text style={s.pageNavTxt}>‹</Text>
-            </TouchableOpacity>
-          )}
+      {/* ── Sayfa numarası göstergesi ───────────────────────────────────────
+           Dikey modda: sadece "X / Y" sayı (ok yok, zaten scroll var)
+           Page modda:  ‹  X / Y  › navigasyon oklarıyla                  */}
+      <View style={[s.pageRow, {
+        bottom: uiVisible
+          ? bottomBarH + 8
+          : insets.bottom + 8,
+      }]}>
+        {isPage && (
+          <TouchableOpacity
+            style={[s.pageNavBtn, pageModePage === 0 && s.navBtnDisabled]}
+            onPress={() => scrollToPage(pageModePage - 1)}
+            disabled={pageModePage === 0}
+          >
+            <Text style={s.pageNavTxt}>‹</Text>
+          </TouchableOpacity>
+        )}
 
-          <Text style={s.pageInfo}>
-            {currentPage + 1} / {pages.length}
-          </Text>
+        <Text style={s.pageInfo}>
+          {currentPage + 1} / {pages.length}
+        </Text>
 
-          {isPage && (
-            <TouchableOpacity
-              style={[s.pageNavBtn, pageModePage === pages.length - 1 && s.navBtnDisabled]}
-              onPress={() => scrollToPage(pageModePage + 1)}
-              disabled={pageModePage === pages.length - 1}
-            >
-              <Text style={s.pageNavTxt}>›</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {isPage && (
+          <TouchableOpacity
+            style={[s.pageNavBtn, pageModePage === pages.length - 1 && s.navBtnDisabled]}
+            onPress={() => scrollToPage(pageModePage + 1)}
+            disabled={pageModePage === pages.length - 1}
+          >
+            <Text style={s.pageNavTxt}>›</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* ── BOTTOM BAR ─────────────────────────────────────────────────────── */}
       <Animated.View
         style={[s.bottomBar, { opacity: uiAnim, paddingBottom: insets.bottom + 4 }]}
         pointerEvents={uiVisible ? 'box-none' : 'none'}
       >
-        
-
         <View style={s.bottomRow}>
-          {/* Önceki bölüm = daha küçük numara */}
           <TouchableOpacity
             style={[s.navBtn, !hasPrev && s.navBtnDisabled]}
             onPress={() => goChapter('prev')}
@@ -566,7 +648,6 @@ const scrollToPage = useCallback((index: number) => {
             <Text style={s.chapBtnTxt}>☰ Bölümler</Text>
           </TouchableOpacity>
 
-          {/* Sonraki bölüm = daha büyük numara */}
           <TouchableOpacity
             style={[s.navBtn, !hasNext && s.navBtnDisabled]}
             onPress={() => goChapter('next')}
@@ -576,7 +657,6 @@ const scrollToPage = useCallback((index: number) => {
           </TouchableOpacity>
         </View>
       </Animated.View>
-
 
       {/* ── SETTINGS MODAL ─────────────────────────────────────────────────── */}
       <Modal visible={settingsOpen} transparent animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
@@ -638,7 +718,6 @@ const scrollToPage = useCallback((index: number) => {
                 <View style={s.sheetHandle} />
                 <Text style={s.sheetTitle}>Bölümler</Text>
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  {/* Büyük → küçük sırada göster (en yeni üstte) */}
                   {[...allChapters].reverse().map((ch) => {
                     const isCurrent = ch.link === (chapterId ?? mangaLink);
                     return (
@@ -679,9 +758,10 @@ const scrollToPage = useCallback((index: number) => {
 export default MangaScreen;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const THUMB_H   = 48;
-const THUMB_W   = 4;
-const TOP_BAR_H = 52;
+const THUMB_H            = 48;
+const THUMB_W            = 4;
+const TOP_BAR_H          = 52;
+const BOTTOM_BAR_INNER_H = 58;
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
@@ -728,7 +808,7 @@ const s = StyleSheet.create({
   },
   pageInfo: {
     color: C.inkMid, fontSize: 14, textAlign: 'center',
-    marginBottom: 8, fontWeight: '700', letterSpacing: 1,
+    fontWeight: '700', letterSpacing: 1,
   },
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between' },
 
@@ -746,13 +826,6 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: C.gold + '55', alignItems: 'center',
   },
   chapBtnTxt: { color: C.gold, fontSize: 13, fontWeight: '800' },
-
-  miniInfo: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 20 },
-  miniInfoTxt: {
-    color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '700',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
-  },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
@@ -791,34 +864,20 @@ const s = StyleSheet.create({
     backgroundColor: C.gold + '22', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
     marginLeft: 6,
   },
+
   pageRow: {
-  position: 'absolute',
-  bottom: 0,
-  left: 0,
-  right: 0,
-
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 12,
-  marginBottom: 28,
-  paddingBottom: 36,
-},
-
-pageNavBtn: {
-  marginBottom: 8,
-  paddingBottom: 4,
-  width: 32,
-  height: 32,
-  borderRadius: 8,
-  backgroundColor: 'rgba(255,255,255,0.08)',
-  justifyContent: 'center',
-  alignItems: 'center',
-},
-
-pageNavTxt: {
-  color: '#fff',
-  fontSize: 18,
-  fontWeight: '800',
-},
+    position: 'absolute',
+    left: 0, right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 28,
+  },
+  pageNavBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  pageNavTxt: { color: '#fff', fontSize: 18, fontWeight: '800' },
 });
