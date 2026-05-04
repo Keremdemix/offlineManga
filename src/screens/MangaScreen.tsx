@@ -345,22 +345,24 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [posKey]);
 
   const restorePosition = useCallback(async (count: number) => {
+    if (readMode === 'page') return; // page modda restore yok
     try {
       const saved = await AsyncStorage.getItem(posKey);
       if (saved) {
         const idx = Math.min(Number(saved), count - 1);
-        setTimeout(() => {
-          if (readMode === 'vertical') {
-            flatRef.current?.scrollToIndex({ index: idx, animated: false });
-          } else {
-            flatRef.current?.scrollToIndex({ index: idx, animated: false });
-          }
-          setCurrentPage(idx);
-          setPageModePage(idx);
-        }, 350);
+        if (idx > 0) {
+          setTimeout(() => {
+            flatRef.current?.scrollToOffset({
+              offset: idx * (SW / 1.4), // tahmini offset, index yerine offset kullan
+              animated: false,
+            });
+            setCurrentPage(idx);
+            setPageModePage(idx);
+          }, 350);
+        }
       }
     } catch {}
-  }, [posKey]);
+  }, [posKey, readMode]);
 
   // ── Data ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -517,11 +519,6 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
               }}
             />
           ) : (
-            // ── VERTICAL MOD ───────────────────────────────────────────────
-            // contentContainerStyle'da Animated.Value kullanmak için
-            // Animated.FlatList yerine normal FlatList + wrapper trick.
-            // En temiz yol: paddingTop/Bottom'u Animated.Value'ya bağlı
-            // bir Animated.View ile sarmak.
             <Animated.FlatList
               ref={flatRef}
               data={pages}
@@ -542,11 +539,8 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
               overScrollMode="never"
               bounces={false}
               directionalLockEnabled
-              // ── YUKARI SCROLL ATLAMA FİX ────────────────────────────────
-              // Görünür içeriğin hemen üstündeki item'ın yüksekliği
-              // değişince (aspect ratio gecikmeli yükleme) FlatList
-              // scroll offset'i korur — yukarıda içerik değişse bile
-              // ekran yerinde kalır.
+              onScrollToIndexFailed={(_info) => {
+              }}
               maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
               contentContainerStyle={{
                 paddingTop:    animPaddingTop    as any,
@@ -596,10 +590,6 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
           <Text style={s.floatingToggleTxt}>☰</Text>
         </TouchableOpacity>
       )}
-
-      {/* ── Sayfa numarası göstergesi ───────────────────────────────────────
-           Dikey modda: sadece "X / Y" sayı (ok yok, zaten scroll var)
-           Page modda:  ‹  X / Y  › navigasyon oklarıyla                  */}
       <View style={[s.pageRow, {
         bottom: uiVisible
           ? bottomBarH + 8
@@ -615,9 +605,11 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
           </TouchableOpacity>
         )}
 
-        <Text style={s.pageInfo}>
-          {currentPage + 1} / {pages.length}
-        </Text>
+        {isPage && (
+          <Text style={s.pageInfo}>
+            {currentPage + 1} / {pages.length}
+          </Text>
+        )}
 
         {isPage && (
           <TouchableOpacity
@@ -673,7 +665,12 @@ const MangaScreen: React.FC<Props> = ({ route, navigation }) => {
                     <TouchableOpacity
                       key={m}
                       style={[s.optBtn, readMode === m && s.optBtnActive]}
-                      onPress={() => { setReadMode(m); setSettingsOpen(false); }}
+                      onPress={() => { 
+                        setReadMode(m); 
+                        setCurrentPage(0); 
+                        setPageModePage(0); 
+                        setSettingsOpen(false); 
+                      }}
                     >
                       <Text style={[s.optBtnTxt, readMode === m && s.optBtnTxtActive]}>
                         {m === 'vertical' ? '📜 Dikey' : '📖 Sayfa'}
