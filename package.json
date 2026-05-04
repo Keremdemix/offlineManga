@@ -10,9 +10,11 @@
     "test": "jest"
   },
   "dependencies": {
+    "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "^1.21.0",
     "@react-native/new-app-screen": "0.84.1",
     "@react-navigation/native-stack": "^7.14.10",
+    "notifee": "^0.0.1",
     "react": "19.2.3",
     "react-native": "0.84.1",
     "react-native-fs": "^2.20.0",

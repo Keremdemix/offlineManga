@@ -2,6 +2,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { downloadMangaChapter } from '../services/mangaService';
 import { Manga } from '../types/manga';
+// ✅ YENİ — bildirim servisi
+import { notifyDownloadDone } from '../services/notificationService';
 
 export type DownloadStatus = 'idle' | 'downloading' | 'done' | 'error';
 
@@ -19,6 +21,8 @@ export const downloadChapter = async (
   chapterId: string,
   link: string,
   onProgress?: (p: DownloadProgress) => void,
+  // ✅ YENİ — bildirimde görünecek bölüm numarası (opsiyonel)
+  chapterNumber?: number | string,
 ): Promise<boolean> => {
   try {
     onProgress?.({
@@ -73,6 +77,9 @@ export const downloadChapter = async (
       current: result.pages.length,
       total: result.pages.length,
     });
+
+    // ✅ YENİ — indirme başarıyla bitti, bildirim gönder
+    await notifyDownloadDone(mangaTitle, chapterNumber ?? chapterId);
 
     return true;
   } catch (e) {

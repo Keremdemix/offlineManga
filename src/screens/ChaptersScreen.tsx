@@ -24,6 +24,8 @@ import { downloadChapter, DownloadProgress } from '../actions/downloadActions';
 import { extractChapterNumber } from '../utils/chapterUtils';
 import { useMangaActions } from '../actions/useMangaActions';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// ✅ YENİ — bildirim kurulumu ve toplu bildirim
+import { setupNotifications, notifyBatchDownloadDone } from '../services/notificationService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chapters'>;
 
@@ -207,7 +209,6 @@ const SelectionBar: React.FC<SelectionBarProps> = ({
       </TouchableOpacity>
       <Text style={sb.count}>{count}/{total} seçili</Text>
       <View style={sb.actions}>
-        {/* Tümünü Seç / Seçimi Kaldır */}
         <TouchableOpacity
           style={[sb.actionBtn, allSelected && sb.actionAllActive]}
           onPress={onSelectAll}
@@ -216,15 +217,12 @@ const SelectionBar: React.FC<SelectionBarProps> = ({
             {allSelected ? '☑' : '☐'}
           </Text>
         </TouchableOpacity>
-        {/* Okundu toggle */}
         <TouchableOpacity style={sb.actionBtn} onPress={onMarkReadSelected}>
           <Text style={sb.actionTxt}>✦</Text>
         </TouchableOpacity>
-        {/* İndir */}
         <TouchableOpacity style={[sb.actionBtn, sb.actionDl]} onPress={onDownloadSelected}>
           <Text style={sb.actionTxt}>↓</Text>
         </TouchableOpacity>
-        {/* Sil */}
         <TouchableOpacity style={[sb.actionBtn, sb.actionDel]} onPress={onDeleteSelected}>
           <Text style={[sb.actionTxt, { color: T.red }]}>🗑</Text>
         </TouchableOpacity>
@@ -243,7 +241,6 @@ const sb = StyleSheet.create({
     backgroundColor: T.gold,
     borderTopWidth: 1,
     borderTopColor: T.lineHi,
-    // paddingBottom dinamik olarak ekleniyor (bottomInset)
   },
   inner: {
     height: 52,
@@ -432,12 +429,7 @@ const r = StyleSheet.create({
 const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const { mangaTitle } = route.params;
 
-  // ✅ Safe area insets — Samsung navigasyon çubuğu yüksekliğini verir
   const insets = useSafeAreaInsets();
-  // SelectionBar'ın altına eklenecek padding:
-  // Gesture navigation: insets.bottom ≈ 24–48px
-  // 3-button nav: insets.bottom ≈ 0 ama NAVIGATION_BAR_HEIGHT ≈ 48px
-  // Her iki durumu karşılamak için minimum 16px garanti ediyoruz.
   const safeBottom = Math.max(insets.bottom, 16);
 
   const [chapters,    setChapters]    = useState<Chapter[]>([]);
@@ -464,6 +456,11 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const activeDownloads = useRef<Set<string>>(new Set());
   const scrollY = useRef(new Animated.Value(0)).current;
 
+  // ✅ YENİ — uygulama ilk açıldığında bildirim kanalını kur ve izin iste
+  useEffect(() => {
+    setupNotifications();
+  }, []);
+
   const coverOp = scrollY.interpolate({ inputRange: [0, STICK_AT], outputRange: [1, 0.18], extrapolate: 'clamp' });
   const coverTY = scrollY.interpolate({ inputRange: [0, STICK_AT], outputRange: [0, -(STICK_AT * 0.26)], extrapolate: 'clamp' });
   const coverScale = scrollY.interpolate({ inputRange: [-60, 0], outputRange: [1.06, 1], extrapolate: 'clamp' });
@@ -476,12 +473,11 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const enterSelectMode = (id: string) => { setSelectMode(true); setSelected(new Set([id])); };
   const exitSelectMode  = () => { setSelectMode(false); setSelected(new Set()); };
 
-  // Tümünü seç / seçimi kaldır
   const handleSelectAll = () => {
     if (selected.size === chapters.length) {
-      setSelected(new Set()); // hepsi seçiliyse kaldır
+      setSelected(new Set());
     } else {
-      setSelected(new Set(chapters.map(c => c.id))); // hepsini seç
+      setSelected(new Set(chapters.map(c => c.id)));
     }
   };
 
@@ -567,16 +563,15 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const handleDownload = async (ch: Chapter) => {
     if (activeDownloads.current.has(ch.id)) return;
     activeDownloads.current.add(ch.id);
+    // ✅ YENİ — chapterNumber iletildi, bildirimde "Bölüm 42" gibi görünür
     await downloadChapter(mangaTitle, ch.id, ch.link, async p => {
       setProgresses(prev => ({ ...prev, [ch.id]: p }));
       if (p.status === 'done') { activeDownloads.current.delete(ch.id); await markDownloaded(ch.id); loadChapters(); }
       if (p.status === 'error') { activeDownloads.current.delete(ch.id); }
-    });
+    }, ch.chapterNumber);
   };
 
   const openChapter = (ch: Chapter) => {
-    // Bölüm numarasına göre ARTAN sırada sırala (küçük → büyük)
-    // MangaScreen bu sıralamayı baz alarak Önceki/Sonraki hesaplar
     const sortedChapters = [...chapters].sort((a, b) => {
       const an = a.chapterNumber ?? 0;
       const bn = b.chapterNumber ?? 0;
@@ -586,15 +581,13 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
     const allChaptersMeta = sortedChapters.map(c => ({
       link:          c.link,
       chapterNumber: c.chapterNumber ?? 0,
-      // İndirilmiş sayfalar varsa taşı — MangaScreen tekrar indirmez
       pages:         c.downloaded && c.pages?.length ? c.pages : undefined,
     }));
 
     const common = {
       mangaTitle,
       chapterId:   ch.link,
-      allChapters: allChaptersMeta,   // ✅ MangaScreen'in beklediği key
-      // allChapterIds artık gönderilmiyor
+      allChapters: allChaptersMeta,
     };
 
     if (ch.downloaded && ch.pages?.length) {
@@ -636,10 +629,16 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
     const notDl = chapters.filter(c => !c.downloaded);
     if (!notDl.length) { Alert.alert('Bilgi', 'Tüm bölümler zaten indirilmiş.'); return; }
     for (const ch of notDl) await handleDownload(ch);
+    // ✅ YENİ — tüm indirme bitti, toplu bildirim
+    await notifyBatchDownloadDone(mangaTitle, notDl.length);
   };
 
   const handleDownloadSelected = async () => {
     for (const ch of selectedChapters) await handleDownload(ch);
+    // ✅ YENİ — seçili bölümler indirildi, toplu bildirim
+    if (selectedChapters.length > 1) {
+      await notifyBatchDownloadDone(mangaTitle, selectedChapters.length);
+    }
     exitSelectMode();
   };
 
@@ -686,14 +685,12 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
   const readCount = chapters.filter(c => c.read).length;
   const unread    = chapters.length - readCount;
 
-  // SelectionBar yüksekliği = 52 (inner) + safeBottom padding
   const selBarTotalH = 52 + safeBottom;
 
   return (
     <View style={s.root}>
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
 
-      {/* ── Kapak ─────────────────────────────────────────────────────────── */}
       <Animated.View
         style={[s.coverWrap, { opacity: coverOp, transform: [{ translateY: coverTY }, { scale: coverScale }] }]}
         pointerEvents="none"
@@ -705,13 +702,11 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
         )}
       </Animated.View>
 
-      {/* ── Filler ──────────────────────────────────────────────────────────── */}
       <Animated.View
         style={[s.filler, { top: PANEL_TOP + PANEL_H + BAR_H, transform: [{ translateY: panelTY }] }]}
         pointerEvents="none"
       />
 
-      {/* ── Header Panel ──────────────────────────────────────────────────── */}
       <Animated.View
         style={[s.panel, { top: PANEL_TOP, transform: [{ translateY: panelTY }] }]}
         pointerEvents="box-none"
@@ -763,12 +758,10 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
         </View>
       </Animated.View>
 
-      {/* ── Liste ─────────────────────────────────────────────────────────── */}
       <Animated.ScrollView
         style={s.scroll}
         contentContainerStyle={{
           paddingTop: COVER_H + PANEL_H + BAR_H + 60,
-          // SelectionBar aktifken son öğe barın altında kalmasın
           paddingBottom: selectMode ? selBarTotalH + 20 : 120,
         }}
         onScroll={Animated.event(
@@ -798,7 +791,6 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
         ))}
       </Animated.ScrollView>
 
-      {/* ── SelectionBar — safe area padding ile ──────────────────────────── */}
       {selectMode && (
         <SelectionBar
           count={selected.size}
@@ -813,14 +805,12 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
         />
       )}
 
-      {/* ── Modal ─────────────────────────────────────────────────────────── */}
       <AddChapterModal
         visible={addVisible}
         onClose={() => setAddVisible(false)}
         onAdd={handleAddChapter}
       />
 
-      {/* ── Manga menüsü ──────────────────────────────────────────────────── */}
       <Modal visible={menuVisible} transparent animationType="fade">
         <TouchableOpacity
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}
@@ -851,7 +841,6 @@ const ChaptersScreen: React.FC<Props> = ({ route, navigation }) => {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Edit Modal ────────────────────────────────────────────────────── */}
       <Modal visible={editVisible} transparent animationType="slide">
         <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' }}>
           <View style={{ backgroundColor: '#1C1C28', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: Math.max(insets.bottom + 20, 28) }}>
