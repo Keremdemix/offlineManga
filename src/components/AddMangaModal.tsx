@@ -33,7 +33,7 @@ const AMBER = '#F5A623';
 const BLUE = '#4A90E2';
 const RED = '#e74c3c';
 const TEXT = '#E8E8F0';
-const MUTED = '#3A3A44';
+const MUTED = '#8888A0';
 
 const AddMangaModal: React.FC<Props> = ({
   visible,
@@ -52,7 +52,7 @@ const AddMangaModal: React.FC<Props> = ({
   const [chapterLinks, setChapterLinks] = useState<string[]>(['']);
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
-
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   useEffect(() => {
     if (!visible) return;
     AsyncStorage.getItem('localMangas').then(data => {
@@ -190,7 +190,10 @@ const AddMangaModal: React.FC<Props> = ({
 
           {/* ───────── MANGA MODE ───────── */}
           {mode === 'manga' && (
-            <>
+            <ScrollView>
+              {/* 🔥 TITLE INPUT */}
+              <Text style={st.sectionTitle}>Manga Bilgileri</Text>
+
               <TextInput
                 placeholder="Manga adı"
                 placeholderTextColor={MUTED}
@@ -199,18 +202,27 @@ const AddMangaModal: React.FC<Props> = ({
                 onChangeText={setNewTitle}
               />
 
+              {/* 🔥 COVER INPUT */}
               <TextInput
-                placeholder="Kapak URL"
+                placeholder="Kapak URL (opsiyonel)"
                 placeholderTextColor={MUTED}
                 style={st.input}
                 value={cover}
                 onChangeText={setCover}
               />
 
-              <TouchableOpacity style={st.btnBlue} onPress={handleSaveManga}>
-                <Text style={st.btnText}>Kaydet</Text>
+              {/* 🔥 PREVIEW (bonus ama çok iyi görünür) */}
+              {!!cover && (
+                <View style={st.previewBox}>
+                  <Text style={st.previewText}>Kapak eklendi</Text>
+                </View>
+              )}
+
+              {/* 🔥 SAVE BUTTON */}
+              <TouchableOpacity style={st.btnAmber} onPress={handleSaveManga}>
+                <Text style={st.btnTextDark}>Manga Ekle</Text>
               </TouchableOpacity>
-            </>
+            </ScrollView>
           )}
 
           {/* ───────── CHAPTER MODE ───────── */}
@@ -218,32 +230,54 @@ const AddMangaModal: React.FC<Props> = ({
             <ScrollView>
               {/* 🔥 MANGA SEÇİM */}
               {!mangaTitle && (
-                <>
+                <View style={st.sectionBox}>
+                  <Text style={st.sectionTitle}>Manga Seç</Text>
+
                   <TextInput
                     placeholder="Manga ara..."
                     placeholderTextColor={MUTED}
                     style={st.input}
                     value={search}
-                    onChangeText={setSearch}
+                    onChangeText={(text) => {
+                      setSearch(text);
+                      setIsDropdownOpen(true); // 🔥 yazarken aç
+                    }}
+                    onFocus={() => setIsDropdownOpen(true)} // 🔥 tıklayınca aç
                   />
 
-                  {filtered.map(item => (
-                    <TouchableOpacity
-                      key={item}
-                      onPress={() => setSelectedManga(item)}
-                    >
-                      <Text
-                        style={{
-                          color: selectedManga === item ? AMBER : TEXT,
-                          padding: 6,
-                          fontWeight: selectedManga === item ? '800' : '400',
-                        }}
-                      >
-                        {item}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </>
+                  {/* 🔥 DROPDOWN */}
+                  {isDropdownOpen && search.length >= 0 && (
+                    <View style={st.dropdown}>
+                      <ScrollView nestedScrollEnabled>
+                        {filtered.map(item => (
+                          <TouchableOpacity
+                            key={item}
+                            style={st.dropdownItem}
+                            onPress={() => {
+                              setSelectedManga(item);
+                              setSearch(item);
+                              setIsDropdownOpen(false); // 🔥 seçince kapan
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: selectedManga === item ? AMBER : TEXT,
+                                fontWeight: selectedManga === item ? '800' : '400',
+                              }}
+                            >
+                              {item}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {/* boş state */}
+                  {isDropdownOpen && search.length > 0 && filtered.length === 0 && (
+                    <Text style={st.emptyText}>Sonuç bulunamadı</Text>
+                  )}
+                </View>
               )}
 
               {/* 🔥 MULTI LINK */}
@@ -317,7 +351,7 @@ const st = StyleSheet.create({
   },
   modal: {
     width: '90%',
-    maxHeight: '85%',
+    maxHeight: '100%',
     backgroundColor: SURFACE,
     padding: 20,
     borderRadius: 16,
@@ -376,4 +410,54 @@ const st = StyleSheet.create({
     textAlign: 'center',
     marginTop: 14,
   },
+
+  previewBox: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: CARD,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+  },
+
+  previewText: {
+    color: AMBER,
+    fontWeight: '700',
+  },
+
+sectionBox: {
+  backgroundColor: CARD,
+  borderRadius: 12,
+  padding: 12,
+  borderWidth: 1,
+  borderColor: BORDER,
+  marginBottom: 12,
+},
+
+sectionTitle: {
+  color: TEXT,
+  fontWeight: '700',
+  marginBottom: 6,
+},
+
+dropdown: {
+  maxHeight: 100,
+  marginTop: 6,
+  borderRadius: 10,
+  backgroundColor: SURFACE,
+  borderWidth: 1,
+  borderColor: BORDER,
+},
+
+dropdownItem: {
+  padding: 10,
+  borderBottomWidth: 1,
+  borderBottomColor: BORDER,
+},
+
+emptyText: {
+  color: MUTED,
+  marginTop: 6,
+},
 });
