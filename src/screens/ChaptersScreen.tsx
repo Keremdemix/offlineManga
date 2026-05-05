@@ -80,11 +80,27 @@ const AddChapterModal: React.FC<AddChapterModalProps> = ({ visible, onClose, onA
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
 
+  // Açılışta kayıtlı linki yükle
+  useEffect(() => {
+    if (!visible) return;
+    AsyncStorage.getItem('addChapterLastLinks').then(raw => {
+      if (raw) {
+        try { setLinks(JSON.parse(raw)); } catch { setLinks(['']); }
+      }
+    });
+  }, [visible]);
+
+  // Link değişince kaydet
+  const updateLinks = (newLinks: string[]) => {
+    setLinks(newLinks);
+    AsyncStorage.setItem('addChapterLastLinks', JSON.stringify(newLinks));
+  };
+
   const handleAdd = () => {
     const clean = links.map(l => l.trim()).filter(Boolean);
     if (!clean.length) { Alert.alert('Hata', 'En az 1 link gir.'); return; }
     onAdd(clean, start ? Number(start) : undefined, end ? Number(end) : undefined);
-    setLinks(['']); setStart(''); setEnd('');
+    setStart(''); setEnd('');
     onClose();
   };
 
@@ -103,7 +119,7 @@ const AddChapterModal: React.FC<AddChapterModalProps> = ({ visible, onClose, onA
               <TextInput
                 style={[md.input, { flex: 1, marginTop: 0 }]}
                 value={l}
-                onChangeText={t => { const a = [...links]; a[i] = t; setLinks(a); }}
+                onChangeText={t => { const a = [...links]; a[i] = t; updateLinks(a); }}
                 placeholder={`Link ${i + 1}`}
                 placeholderTextColor={T.inkMid}
                 autoCapitalize="none"
@@ -112,14 +128,14 @@ const AddChapterModal: React.FC<AddChapterModalProps> = ({ visible, onClose, onA
               {i > 0 && (
                 <TouchableOpacity
                   style={md.removeBtn}
-                  onPress={() => setLinks(links.filter((_, idx) => idx !== i))}
+                  onPress={() => updateLinks(links.filter((_, idx) => idx !== i))}
                 >
                   <Text style={md.removeTxt}>✕</Text>
                 </TouchableOpacity>
               )}
             </View>
           ))}
-          <TouchableOpacity onPress={() => setLinks([...links, ''])}>
+          <TouchableOpacity onPress={() => updateLinks([...links, ''])}>
             <Text style={md.addLink}>+ link ekle</Text>
           </TouchableOpacity>
           <Text style={md.rangeLabel}>Toplu ekleme (opsiyonel)</Text>
