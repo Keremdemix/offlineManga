@@ -70,4 +70,8 @@ Mobile Developer (Android | Kotlin | Jetpack Compose)
 
 ## 📄 License
 
-This project is for educational and portfolio purposes.
+This project is licensed under the MIT License.
+
+You are free to use, modify, and distribute this project for personal or educational purposes, but commercial use without permission is not allowed.
+
+See the LICENSE file for more details.
