@@ -26,15 +26,16 @@ The goal is to provide a distraction-free reading experience with efficient loca
 
 ## 🛠️ Tech Stack
 
-- Kotlin
-- Jetpack Compose
+- React Native
+- JavaScript / TypeScript
 - Android Studio
-- MVVM Architecture
-- Room Database (for local storage)
-- Coroutines / Flow
-- DataStore (optional settings storage)
+- React Navigation
+- AsyncStorage / Local Storage
+- MVVM-inspired architecture
+- REST API Integration (optional)
 
 ---
+
 
 ## 🏗️ Architecture
 
@@ -61,12 +62,6 @@ The project follows MVVM architecture:
 
 ---
 
-## 👨‍💻 Developer
-
-**Kerem Demir**  
-Mobile Developer (Android | Kotlin | Jetpack Compose)  
-
----
 
 ## 📄 License
 
